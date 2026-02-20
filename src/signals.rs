@@ -1,6 +1,8 @@
+#[cfg(unix)]
 use nix::sys::signal::{signal, SigHandler, Signal};
 
 /// Initialize shell signal handlers
+#[cfg(unix)]
 pub fn init() {
     unsafe {
         // We ignore SIGINT, SIGQUIT, etc. so the shell doesn't exit when these signals are sent
@@ -15,6 +17,7 @@ pub fn init() {
 }
 
 /// Restore default signal handlers (for child processes)
+#[cfg(unix)]
 pub fn restore_default() {
     unsafe {
         signal(Signal::SIGINT, SigHandler::SigDfl).expect("Failed to restore SIGINT");
@@ -23,4 +26,14 @@ pub fn restore_default() {
         signal(Signal::SIGTTIN, SigHandler::SigDfl).expect("Failed to restore SIGTTIN");
         signal(Signal::SIGTTOU, SigHandler::SigDfl).expect("Failed to restore SIGTTOU");
     }
+}
+
+#[cfg(windows)]
+pub fn init() {
+    // Basic Windows console handling is handled by rustyline for Ctrl-C
+}
+
+#[cfg(windows)]
+pub fn restore_default() {
+    // No-op on Windows
 }

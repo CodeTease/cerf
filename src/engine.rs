@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use crate::parser::ParsedCommand;
 use crate::builtins;
@@ -41,6 +42,7 @@ pub fn execute(cmd: ParsedCommand, state: &mut ShellState) -> ExecutionResult {
             ExecutionResult::KeepRunning
         },
         _ => {
+            #[cfg(unix)]
             let result = unsafe {
                 Command::new(&cmd.name)
                     .args(&cmd.args)
@@ -50,6 +52,11 @@ pub fn execute(cmd: ParsedCommand, state: &mut ShellState) -> ExecutionResult {
                     })
                     .spawn()
             };
+
+            #[cfg(windows)]
+            let result = Command::new(&cmd.name)
+                .args(&cmd.args)
+                .spawn();
 
             match result {
                 Ok(mut child) => {
