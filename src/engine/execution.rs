@@ -65,6 +65,10 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             builtins::export::run(&args, &mut state.variables);
             (ExecutionResult::KeepRunning, 0)
         },
+        "unset" => {
+            builtins::unset::run(&args, &mut state.variables);
+            (ExecutionResult::KeepRunning, 0)
+        },
         "cd" => {
             let code = match builtins::cd::run(&args, state) {
                 Ok(()) => 0,
