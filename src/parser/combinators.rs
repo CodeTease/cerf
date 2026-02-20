@@ -81,13 +81,56 @@ fn parse_redirect(input: &str) -> IResult<&str, Redirect> {
     Ok((input, Redirect { kind, file }))
 }
 
+// ── Assignment parsing ────────────────────────────────────────────────────
+
+/// Parse a shell assignment: `VAR=VALUE`.
+fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
+    // POSIX says variable names must be alphanumeric/underscore and start with
+    // a non-digit. For simplicity, we'll just take anything up to '=' that's
+    // not a meta-character.
+    let (input, name) = is_not(" \t\r\n\"';&|=><")(input)?;
+    if name.is_empty() {
+        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+    }
+    let (input, _) = char('=')(input)?;
+    // The value can be any "word" (supporting quotes).
+    // If the next char is whitespace or end of input, value is empty string.
+    let (input, value) = match parse_arg(input) {
+        Ok((rest, val)) => (rest, val),
+        Err(_) => (input, String::new()),
+    };
+    Ok((input, (name.to_string(), value)))
+}
+
 // ── Single command (with redirects) ───────────────────────────────────────
 
 pub fn parse_single_command(input: &str) -> IResult<&str, ParsedCommand> {
     let (mut rest, _) = multispace0(input)?;
 
-    // Parse the command name first
-    let (after_name, name) = parse_arg(rest)?;
+    let mut assignments: Vec<(String, String)> = Vec::new();
+
+    // Parse zero or more assignments first.
+    loop {
+        if let Ok((after_assign, assign)) = parse_assignment(rest) {
+            assignments.push(assign);
+            let (after_space, _) = multispace0(after_assign)?;
+            rest = after_space;
+        } else {
+            break;
+        }
+    }
+
+    // Parse the command name (optional if assignments are present).
+    let (after_name, name) = match parse_arg(rest) {
+        Ok((after, n)) => (after, Some(n)),
+        Err(e) => {
+            if assignments.is_empty() {
+                return Err(e);
+            } else {
+                (rest, None)
+            }
+        }
+    };
     rest = after_name;
 
     let mut args: Vec<String> = Vec::new();
@@ -116,7 +159,7 @@ pub fn parse_single_command(input: &str) -> IResult<&str, ParsedCommand> {
 
     let (rest, _) = multispace0(rest)?;
 
-    Ok((rest, ParsedCommand { name, args, redirects }))
+    Ok((rest, ParsedCommand { assignments, name, args, redirects }))
 }
 
 // ── Pipeline expression (cmd | cmd | …) ──────────────────────────────────

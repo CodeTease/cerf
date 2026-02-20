@@ -2,7 +2,8 @@
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ParsedCommand {
-    pub name: String,
+    pub assignments: Vec<(String, String)>,
+    pub name: Option<String>,
     pub args: Vec<String>,
     pub redirects: Vec<Redirect>,
 }

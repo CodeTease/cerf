@@ -84,28 +84,28 @@ mod tests {
     #[test]
     fn test_parse_simple() {
         let cmd = parse_line("ls -la").unwrap();
-        assert_eq!(cmd.name, "ls");
+        assert_eq!(cmd.name.as_deref(), Some("ls"));
         assert_eq!(cmd.args, vec!["-la"]);
     }
 
     #[test]
     fn test_parse_quoted() {
         let cmd = parse_line("echo \"hello world\"").unwrap();
-        assert_eq!(cmd.name, "echo");
+        assert_eq!(cmd.name.as_deref(), Some("echo"));
         assert_eq!(cmd.args, vec!["hello world"]);
     }
 
     #[test]
     fn test_parse_mixed() {
         let cmd = parse_line("cd \"My Documents\" backup").unwrap();
-        assert_eq!(cmd.name, "cd");
+        assert_eq!(cmd.name.as_deref(), Some("cd"));
         assert_eq!(cmd.args, vec!["My Documents", "backup"]);
     }
 
     #[test]
     fn test_extra_spaces() {
         let cmd = parse_line("  ls   -la  ").unwrap();
-        assert_eq!(cmd.name, "ls");
+        assert_eq!(cmd.name.as_deref(), Some("ls"));
         assert_eq!(cmd.args, vec!["-la"]);
     }
 
@@ -128,9 +128,9 @@ mod tests {
         let entries = parse_pipeline("echo hello ; echo world").unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].pipeline.commands[0].name, "echo");
+        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("echo"));
         assert_eq!(entries[1].connector, Some(Connector::Semi));
-        assert_eq!(entries[1].pipeline.commands[0].name, "echo");
+        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
     }
 
     #[test]
@@ -138,9 +138,9 @@ mod tests {
         let entries = parse_pipeline("make && make install").unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].pipeline.commands[0].name, "make");
+        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("make"));
         assert_eq!(entries[1].connector, Some(Connector::And));
-        assert_eq!(entries[1].pipeline.commands[0].name, "make");
+        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("make"));
         assert_eq!(entries[1].pipeline.commands[0].args, vec!["install"]);
     }
 
@@ -148,9 +148,9 @@ mod tests {
     fn test_or_operator() {
         let entries = parse_pipeline("cat file.txt || echo missing").unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].pipeline.commands[0].name, "cat");
+        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("cat"));
         assert_eq!(entries[1].connector, Some(Connector::Or));
-        assert_eq!(entries[1].pipeline.commands[0].name, "echo");
+        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
         assert_eq!(entries[1].pipeline.commands[0].args, vec!["missing"]);
     }
 
@@ -171,8 +171,8 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
-        assert_eq!(pipeline.commands[0].name, "ls");
-        assert_eq!(pipeline.commands[1].name, "grep");
+        assert_eq!(pipeline.commands[0].name.as_deref(), Some("ls"));
+        assert_eq!(pipeline.commands[1].name.as_deref(), Some("grep"));
         assert_eq!(pipeline.commands[1].args, vec!["foo"]);
     }
 
@@ -182,9 +182,9 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 3);
-        assert_eq!(pipeline.commands[0].name, "cat");
-        assert_eq!(pipeline.commands[1].name, "sort");
-        assert_eq!(pipeline.commands[2].name, "uniq");
+        assert_eq!(pipeline.commands[0].name.as_deref(), Some("cat"));
+        assert_eq!(pipeline.commands[1].name.as_deref(), Some("sort"));
+        assert_eq!(pipeline.commands[2].name.as_deref(), Some("uniq"));
     }
 
     #[test]
@@ -192,10 +192,10 @@ mod tests {
         let entries = parse_pipeline("! ls").unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].pipeline.negated);
-        assert_eq!(entries[0].pipeline.commands[0].name, "ls");
+        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
 
         let entries = parse_pipeline("!  ls -la").unwrap();
-        assert_eq!(entries[0].pipeline.commands[0].name, "ls");
+        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
         assert!(entries[0].pipeline.negated);
     }
 
@@ -213,12 +213,12 @@ mod tests {
         assert_eq!(entries.len(), 2);
         // First entry is a pipeline: ls | grep foo
         assert_eq!(entries[0].pipeline.commands.len(), 2);
-        assert_eq!(entries[0].pipeline.commands[0].name, "ls");
-        assert_eq!(entries[0].pipeline.commands[1].name, "grep");
+        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
+        assert_eq!(entries[0].pipeline.commands[1].name.as_deref(), Some("grep"));
         // Second entry is a simple command: echo done
         assert_eq!(entries[1].connector, Some(Connector::And));
         assert_eq!(entries[1].pipeline.commands.len(), 1);
-        assert_eq!(entries[1].pipeline.commands[0].name, "echo");
+        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
     }
 
     // ── redirection tests ─────────────────────────────────────────────────
@@ -227,7 +227,7 @@ mod tests {
     fn test_redirect_stdout() {
         let entries = parse_pipeline("echo hi > out.txt").unwrap();
         let cmd = &entries[0].pipeline.commands[0];
-        assert_eq!(cmd.name, "echo");
+        assert_eq!(cmd.name.as_deref(), Some("echo"));
         assert_eq!(cmd.args, vec!["hi"]);
         assert_eq!(cmd.redirects.len(), 1);
         assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutOverwrite);
@@ -247,7 +247,7 @@ mod tests {
     fn test_redirect_stdin() {
         let entries = parse_pipeline("sort < in.txt").unwrap();
         let cmd = &entries[0].pipeline.commands[0];
-        assert_eq!(cmd.name, "sort");
+        assert_eq!(cmd.name.as_deref(), Some("sort"));
         assert_eq!(cmd.redirects.len(), 1);
         assert_eq!(cmd.redirects[0].kind, RedirectKind::StdinFrom);
         assert_eq!(cmd.redirects[0].file, "in.txt");
@@ -259,11 +259,11 @@ mod tests {
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
         // First command: cat < in.txt
-        assert_eq!(pipeline.commands[0].name, "cat");
+        assert_eq!(pipeline.commands[0].name.as_deref(), Some("cat"));
         assert_eq!(pipeline.commands[0].redirects.len(), 1);
         assert_eq!(pipeline.commands[0].redirects[0].kind, RedirectKind::StdinFrom);
         // Last command: sort > out.txt
-        assert_eq!(pipeline.commands[1].name, "sort");
+        assert_eq!(pipeline.commands[1].name.as_deref(), Some("sort"));
         assert_eq!(pipeline.commands[1].redirects.len(), 1);
         assert_eq!(pipeline.commands[1].redirects[0].kind, RedirectKind::StdoutOverwrite);
     }
@@ -274,7 +274,7 @@ mod tests {
     fn test_parse_line_expands_var_in_arg() {
         unsafe { std::env::set_var("CERF_DIR", "/tmp/test"); }
         let cmd = parse_line("cd $CERF_DIR").unwrap();
-        assert_eq!(cmd.name, "cd");
+        assert_eq!(cmd.name.as_deref(), Some("cd"));
         assert_eq!(cmd.args, vec!["/tmp/test"]);
         unsafe { std::env::remove_var("CERF_DIR"); }
     }
@@ -283,7 +283,7 @@ mod tests {
     fn test_parse_line_expands_var_in_quoted_arg() {
         unsafe { std::env::set_var("CERF_MSG", "hello world"); }
         let cmd = parse_line("echo \"$CERF_MSG\"").unwrap();
-        assert_eq!(cmd.name, "echo");
+        assert_eq!(cmd.name.as_deref(), Some("echo"));
         assert_eq!(cmd.args, vec!["hello world"]);
         unsafe { std::env::remove_var("CERF_MSG"); }
     }
@@ -293,5 +293,37 @@ mod tests {
         let path_val = std::env::var("PATH").unwrap_or_default();
         let expanded = expand_env_vars("echo $PATH");
         assert!(expanded.contains(&path_val), "expanded line should contain the PATH value");
+    }
+
+    // ── shell variable tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_assignment_only() {
+        let cmd = parse_line("FOO=bar").unwrap();
+        assert!(cmd.name.is_none());
+        assert_eq!(cmd.assignments, vec![("FOO".to_string(), "bar".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_multiple_assignments() {
+        let cmd = parse_line("A=1 B=2 C=3").unwrap();
+        assert_eq!(cmd.assignments.len(), 3);
+        assert_eq!(cmd.assignments[0], ("A".to_string(), "1".to_string()));
+        assert_eq!(cmd.assignments[2], ("C".to_string(), "3".to_string()));
+    }
+
+    #[test]
+    fn test_parse_assignment_with_command() {
+        let cmd = parse_line("VAR=val ls -l").unwrap();
+        assert_eq!(cmd.name.as_deref(), Some("ls"));
+        assert_eq!(cmd.assignments, vec![("VAR".to_string(), "val".to_string())]);
+        assert_eq!(cmd.args, vec!["-l"]);
+    }
+
+    #[test]
+    fn test_parse_assignment_quoted_value() {
+        let cmd = parse_line("MSG=\"hello world\" echo").unwrap();
+        assert_eq!(cmd.assignments, vec![("MSG".to_string(), "hello world".to_string())]);
+        assert_eq!(cmd.name.as_deref(), Some("echo"));
     }
 }

@@ -77,7 +77,11 @@ fn resolve_redirects(redirects: &[Redirect]) -> (Option<&Redirect>, Option<&Redi
 ///
 /// Returns `true` when an expansion happened.
 fn expand_alias(cmd: &mut ParsedCommand, aliases: &HashMap<String, String>) -> bool {
-    if let Some(value) = aliases.get(&cmd.name) {
+    let name = match cmd.name.as_ref() {
+        Some(n) => n,
+        None => return false,
+    };
+    if let Some(value) = aliases.get(name) {
         let value = value.clone();
         // Tokenise the alias value with a simple whitespace split that
         // respects single-quoted segments (good enough for shell aliases).
@@ -86,7 +90,7 @@ fn expand_alias(cmd: &mut ParsedCommand, aliases: &HashMap<String, String>) -> b
             return false;
         }
         // The first token is the new command name.
-        cmd.name = tokens[0].clone();
+        cmd.name = Some(tokens[0].clone());
         // Any remaining alias tokens are prepended to the original args.
         let mut new_args = tokens[1..].to_vec();
         new_args.extend(cmd.args.drain(..));
@@ -213,7 +217,30 @@ fn check_path(p: PathBuf) -> Option<PathBuf> {
 fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResult, i32) {
     let (stdin_redir, stdout_redir) = resolve_redirects(&cmd.redirects);
 
-    match cmd.name.as_str() {
+    if cmd.name.is_none() {
+        // Just assignments
+        for (key, val) in &cmd.assignments {
+            unsafe { std::env::set_var(key, val); }
+        }
+        // Handle residuals like redirects (e.g., VAR=val > file)
+        if let Some(redir) = stdin_redir {
+            if let Err(e) = open_stdin_redirect(redir) {
+                eprintln!("{}", e);
+                return (ExecutionResult::KeepRunning, 1);
+            }
+        }
+        if let Some(redir) = stdout_redir {
+            if let Err(e) = open_stdout_redirect(redir) {
+                eprintln!("{}", e);
+                return (ExecutionResult::KeepRunning, 1);
+            }
+        }
+        return (ExecutionResult::KeepRunning, 0);
+    }
+
+    let name = cmd.name.as_ref().unwrap();
+
+    match name.as_str() {
         "alias" => {
             builtins::alias::run(&cmd.args, &mut state.aliases);
             (ExecutionResult::KeepRunning, 0)
@@ -286,7 +313,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             }
         },
         _ => {
-            let resolved = find_executable(&cmd.name).unwrap_or_else(|| PathBuf::from(&cmd.name));
+            let resolved = find_executable(name).unwrap_or_else(|| PathBuf::from(name));
             
             #[cfg(windows)]
             let mut command = {
@@ -307,6 +334,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             let mut command = Command::new(&resolved);
 
             command.args(&cmd.args);
+            command.envs(cmd.assignments.iter().map(|(k, v)| (k, v)));
 
             // Apply stdin redirect
             if let Some(redir) = stdin_redir {
@@ -351,9 +379,9 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                 }
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::NotFound {
-                        eprintln!("cerf: command not found: {}", cmd.name);
+                        eprintln!("cerf: command not found: {}", name);
                     } else {
-                        eprintln!("cerf: error executing '{}': {}", cmd.name, e);
+                        eprintln!("cerf: error executing '{}': {}", name, e);
                     }
                     127
                 }
@@ -397,8 +425,23 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     let mut prev_stdout: Option<std::process::ChildStdout> = None;
 
     for (i, cmd) in cmds.iter().enumerate() {
+        let name = match cmd.name.as_ref() {
+            Some(n) => n,
+            None => {
+                // Command with just assignments in a multi-command pipeline.
+                // In POSIX, each part of a pipeline is run in a subshell.
+                // For simplicity, we'll just skip this command after setting vars
+                // if we were in a forked process, but here we are in the main process
+                // forking children.
+                // We should probably spawn a dummy process or just skip it.
+                // Bash behavior: `VAR=val | cat` -> VAR is set in a subshell, then exit.
+                // We'll skip it for now.
+                continue;
+            }
+        };
+
         // If a builtin appears in a multi-command pipeline, check for exit
-        if cmd.name == "exit" {
+        if name == "exit" {
             // Kill any children we already spawned
             for mut child in children {
                 let _ = child.kill();
@@ -407,7 +450,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             return (ExecutionResult::Exit, 0);
         }
 
-        let resolved = find_executable(&cmd.name).unwrap_or_else(|| PathBuf::from(&cmd.name));
+        let resolved = find_executable(name).unwrap_or_else(|| PathBuf::from(name));
 
         #[cfg(windows)]
         let mut command = {
@@ -428,6 +471,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         let mut command = Command::new(&resolved);
 
         command.args(&cmd.args);
+        command.envs(cmd.assignments.iter().map(|(k, v)| (k, v)));
 
         // Stdin: first command may have < redirect, others get previous pipe
         if i == 0 {
@@ -490,9 +534,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             }
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    eprintln!("cerf: command not found: {}", cmd.name);
+                    eprintln!("cerf: command not found: {}", name);
                 } else {
-                    eprintln!("cerf: error executing '{}': {}", cmd.name, e);
+                    eprintln!("cerf: error executing '{}': {}", name, e);
                 }
                 // Kill already started children
                 for mut child in children {
