@@ -41,6 +41,14 @@ pub fn execute(cmd: ParsedCommand, state: &mut ShellState) -> ExecutionResult {
             builtins::system::clear();
             ExecutionResult::KeepRunning
         },
+        "echo" => {
+            builtins::echo::run(&cmd.args);
+            ExecutionResult::KeepRunning
+        },
+        "type" => {
+            builtins::type_cmd::run(&cmd.args);
+            ExecutionResult::KeepRunning
+        },
         _ => {
             #[cfg(unix)]
             let result = unsafe {
