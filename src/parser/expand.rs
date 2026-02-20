@@ -1,16 +1,13 @@
-use std::env;
 
-// ── Environment-variable expansion ────────────────────────────────────────
-
-/// Expand environment variable references in `input` before parsing.
+/// Expand variable references in `input` before parsing.
 ///
 /// Substitution rules (mirrors POSIX sh behaviour):
 /// - `$$`        → a literal `$`
-/// - `$VAR`      → the value of the environment variable `VAR`
+/// - `$VAR`      → the value of the variable `VAR`
 ///                 (identifier chars: ASCII alphanumeric + `_`)
 /// - `${VAR}`    → same, with brace delimiters
 /// - Bare `$` with no following identifier or `{` → kept as-is
-pub fn expand_env_vars(input: &str) -> String {
+pub fn expand_vars(input: &str, shell_vars: &std::collections::HashMap<String, String>) -> String {
     let mut result = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
 
@@ -33,7 +30,7 @@ pub fn expand_env_vars(input: &str) -> String {
                     .by_ref()
                     .take_while(|&c| c != '}')
                     .collect();
-                let value = env::var(&var_name).unwrap_or_default();
+                let value = shell_vars.get(&var_name).cloned().unwrap_or_default();
                 result.push_str(&value);
             }
             // $VAR style — identifier starts with alpha or '_'
@@ -45,7 +42,7 @@ pub fn expand_env_vars(input: &str) -> String {
                         })
                     )
                     .collect();
-                let value = env::var(&var_name).unwrap_or_default();
+                let value = shell_vars.get(&var_name).cloned().unwrap_or_default();
                 result.push_str(&value);
             }
             // Bare $ with no following identifier → keep as-is
@@ -66,55 +63,53 @@ mod tests {
 
     #[test]
     fn test_expand_known_var() {
-        unsafe { std::env::set_var("CERF_TEST_VAR", "hello"); }
-        assert_eq!(expand_env_vars("$CERF_TEST_VAR"), "hello");
-        assert_eq!(expand_env_vars("${CERF_TEST_VAR}"), "hello");
-        unsafe { std::env::remove_var("CERF_TEST_VAR"); }
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("CERF_TEST_VAR".to_string(), "hello".to_string());
+        assert_eq!(expand_vars("$CERF_TEST_VAR", &vars), "hello");
+        assert_eq!(expand_vars("${CERF_TEST_VAR}", &vars), "hello");
     }
 
     #[test]
     fn test_expand_missing_var_is_empty() {
-        unsafe { std::env::remove_var("CERF_UNDEFINED_XYZ"); }
-        assert_eq!(expand_env_vars("$CERF_UNDEFINED_XYZ"), "");
-        assert_eq!(expand_env_vars("${CERF_UNDEFINED_XYZ}"), "");
+        let vars = std::collections::HashMap::new();
+        assert_eq!(expand_vars("$CERF_UNDEFINED_XYZ", &vars), "");
+        assert_eq!(expand_vars("${CERF_UNDEFINED_XYZ}", &vars), "");
     }
 
     #[test]
     fn test_expand_dollar_dollar_escape() {
-        assert_eq!(expand_env_vars("$$"), "$");
-        assert_eq!(expand_env_vars("$$$"), "$$");
-        assert_eq!(expand_env_vars("cost: $$5"), "cost: $5");
+        let vars = std::collections::HashMap::new();
+        assert_eq!(expand_vars("$$", &vars), "$");
+        assert_eq!(expand_vars("$$$", &vars), "$$");
+        assert_eq!(expand_vars("cost: $$5", &vars), "cost: $5");
     }
 
     #[test]
     fn test_expand_bare_dollar_kept() {
-        assert_eq!(expand_env_vars("$ "), "$ ");
-        assert_eq!(expand_env_vars("$"), "$");
+        let vars = std::collections::HashMap::new();
+        assert_eq!(expand_vars("$ ", &vars), "$ ");
+        assert_eq!(expand_vars("$", &vars), "$");
     }
 
     #[test]
     fn test_expand_inline() {
-        unsafe { std::env::set_var("CERF_GREET", "world"); }
-        assert_eq!(expand_env_vars("hello $CERF_GREET!"), "hello world!");
-        unsafe { std::env::remove_var("CERF_GREET"); }
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("CERF_GREET".to_string(), "world".to_string());
+        assert_eq!(expand_vars("hello $CERF_GREET!", &vars), "hello world!");
     }
 
     #[test]
     fn test_expand_multiple_vars() {
-        unsafe {
-            std::env::set_var("CERF_A", "foo");
-            std::env::set_var("CERF_B", "bar");
-        }
-        assert_eq!(expand_env_vars("$CERF_A/$CERF_B"), "foo/bar");
-        unsafe {
-            std::env::remove_var("CERF_A");
-            std::env::remove_var("CERF_B");
-        }
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("CERF_A".to_string(), "foo".to_string());
+        vars.insert("CERF_B".to_string(), "bar".to_string());
+        assert_eq!(expand_vars("$CERF_A/$CERF_B", &vars), "foo/bar");
     }
 
     #[test]
     fn test_expand_no_dollar_unchanged() {
-        assert_eq!(expand_env_vars("ls -la"), "ls -la");
-        assert_eq!(expand_env_vars(""), "");
+        let vars = std::collections::HashMap::new();
+        assert_eq!(expand_vars("ls -la", &vars), "ls -la");
+        assert_eq!(expand_vars("", &vars), "");
     }
 }

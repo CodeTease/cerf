@@ -46,7 +46,7 @@ fn main() -> rustyline::Result<()> {
                 }
                 let _ = rl.add_history_entry(input);
 
-                if let Some(entries) = parser::parse_pipeline(input) {
+                if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
                     match engine::execute_list(entries, &mut state) {
                         engine::ExecutionResult::Exit => break,
                         engine::ExecutionResult::KeepRunning => {},

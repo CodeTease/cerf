@@ -14,13 +14,22 @@ pub struct ShellState {
     pub previous_dir: Option<PathBuf>,
     /// All currently-defined aliases. Maps alias name → replacement string.
     pub aliases: HashMap<String, String>,
+    /// All currently-defined shell variables.
+    pub variables: HashMap<String, String>,
 }
 
 impl ShellState {
     pub fn new() -> Self {
+        let mut variables = HashMap::new();
+        // Pre-populate with current environment variables
+        for (key, val) in std::env::vars() {
+            variables.insert(key, val);
+        }
+
         ShellState {
             previous_dir: None,
             aliases: HashMap::new(),
+            variables,
         }
     }
 }
@@ -220,7 +229,11 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
     if cmd.name.is_none() {
         // Just assignments
         for (key, val) in &cmd.assignments {
-            unsafe { std::env::set_var(key, val); }
+            state.variables.insert(key.clone(), val.clone());
+            // If already in env, update it there too
+            if std::env::var(key).is_ok() {
+               unsafe { std::env::set_var(key, val); }
+            }
         }
         // Handle residuals like redirects (e.g., VAR=val > file)
         if let Some(redir) = stdin_redir {
@@ -247,6 +260,10 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
         },
         "unalias" => {
             builtins::unalias::run(&cmd.args, &mut state.aliases);
+            (ExecutionResult::KeepRunning, 0)
+        },
+        "export" => {
+            builtins::export::run(&cmd.args, &mut state.variables);
             (ExecutionResult::KeepRunning, 0)
         },
         "cd" => {

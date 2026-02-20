@@ -5,7 +5,7 @@ mod expand;
 // Re-export the public surface so that `crate::parser::*` keeps working
 // for all existing callers (engine.rs, main.rs, etc.).
 pub use ast::{CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
-pub use expand::expand_env_vars;
+pub use expand::expand_vars;
 
 use combinators::{parse_connector, parse_pipeline_expr};
 
@@ -15,14 +15,14 @@ use combinators::{parse_connector, parse_pipeline_expr};
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
-pub fn parse_input(input: &str) -> Option<Vec<CommandEntry>> {
+pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, String>) -> Option<Vec<CommandEntry>> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
     }
 
     // Expand environment variables before handing the line to nom.
-    let expanded = expand_env_vars(input);
+    let expanded = expand_vars(input, shell_vars);
     let s = expanded.trim();
 
     let mut entries: Vec<CommandEntry> = Vec::new();
@@ -57,14 +57,16 @@ pub fn parse_input(input: &str) -> Option<Vec<CommandEntry>> {
 }
 
 /// Backwards-compatible alias — kept so call-sites in main.rs don't break.
-pub fn parse_pipeline(input: &str) -> Option<Vec<CommandEntry>> {
-    parse_input(input)
+pub fn parse_pipeline(input: &str, shell_vars: &std::collections::HashMap<String, String>) -> Option<Vec<CommandEntry>> {
+    parse_input(input, shell_vars)
 }
 
-/// Backwards-compatible single-command parse (used in tests & legacy paths).
-#[allow(dead_code)]
 pub fn parse_line(input: &str) -> Option<ParsedCommand> {
-    parse_input(input).and_then(|mut v| {
+    parse_line_with_vars(input, &std::collections::HashMap::new())
+}
+
+pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String, String>) -> Option<ParsedCommand> {
+    parse_input(input, vars).and_then(|mut v| {
         if v.len() == 1 && v[0].pipeline.commands.len() == 1 {
             Some(v.remove(0).pipeline.commands.remove(0))
         } else {
@@ -125,7 +127,8 @@ mod tests {
 
     #[test]
     fn test_semicolon_two_commands() {
-        let entries = parse_pipeline("echo hello ; echo world").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("echo hello ; echo world", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("echo"));
@@ -135,7 +138,8 @@ mod tests {
 
     #[test]
     fn test_and_operator() {
-        let entries = parse_pipeline("make && make install").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("make && make install", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("make"));
@@ -146,7 +150,8 @@ mod tests {
 
     #[test]
     fn test_or_operator() {
-        let entries = parse_pipeline("cat file.txt || echo missing").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("cat file.txt || echo missing", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("cat"));
         assert_eq!(entries[1].connector, Some(Connector::Or));
@@ -156,7 +161,8 @@ mod tests {
 
     #[test]
     fn test_chained_operators() {
-        let entries = parse_pipeline("a && b || c ; d").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("a && b || c ; d", &vars).unwrap();
         assert_eq!(entries.len(), 4);
         assert_eq!(entries[1].connector, Some(Connector::And));
         assert_eq!(entries[2].connector, Some(Connector::Or));
@@ -167,7 +173,8 @@ mod tests {
 
     #[test]
     fn test_single_pipe() {
-        let entries = parse_pipeline("ls | grep foo").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("ls | grep foo", &vars).unwrap();
         assert_eq!(entries.len(), 1);
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
@@ -178,7 +185,8 @@ mod tests {
 
     #[test]
     fn test_multi_pipe() {
-        let entries = parse_pipeline("cat f | sort | uniq").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("cat f | sort | uniq", &vars).unwrap();
         assert_eq!(entries.len(), 1);
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 3);
@@ -189,19 +197,21 @@ mod tests {
 
     #[test]
     fn test_not_operator() {
-        let entries = parse_pipeline("! ls").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("! ls", &vars).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].pipeline.negated);
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
 
-        let entries = parse_pipeline("!  ls -la").unwrap();
+        let entries = parse_pipeline("!  ls -la", &vars).unwrap();
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
         assert!(entries[0].pipeline.negated);
     }
 
     #[test]
     fn test_not_with_pipe() {
-        let entries = parse_pipeline("! ls | grep foo").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("! ls | grep foo", &vars).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].pipeline.negated);
         assert_eq!(entries[0].pipeline.commands.len(), 2);
@@ -209,7 +219,8 @@ mod tests {
 
     #[test]
     fn test_pipe_with_connectors() {
-        let entries = parse_pipeline("ls | grep foo && echo done").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("ls | grep foo && echo done", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         // First entry is a pipeline: ls | grep foo
         assert_eq!(entries[0].pipeline.commands.len(), 2);
@@ -225,7 +236,8 @@ mod tests {
 
     #[test]
     fn test_redirect_stdout() {
-        let entries = parse_pipeline("echo hi > out.txt").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("echo hi > out.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
         assert_eq!(cmd.name.as_deref(), Some("echo"));
         assert_eq!(cmd.args, vec!["hi"]);
@@ -236,7 +248,8 @@ mod tests {
 
     #[test]
     fn test_redirect_append() {
-        let entries = parse_pipeline("echo hi >> out.txt").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("echo hi >> out.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
         assert_eq!(cmd.redirects.len(), 1);
         assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutAppend);
@@ -245,7 +258,8 @@ mod tests {
 
     #[test]
     fn test_redirect_stdin() {
-        let entries = parse_pipeline("sort < in.txt").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("sort < in.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
         assert_eq!(cmd.name.as_deref(), Some("sort"));
         assert_eq!(cmd.redirects.len(), 1);
@@ -255,7 +269,8 @@ mod tests {
 
     #[test]
     fn test_pipe_with_redirect() {
-        let entries = parse_pipeline("cat < in.txt | sort > out.txt").unwrap();
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("cat < in.txt | sort > out.txt", &vars).unwrap();
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
         // First command: cat < in.txt
@@ -272,27 +287,28 @@ mod tests {
 
     #[test]
     fn test_parse_line_expands_var_in_arg() {
-        unsafe { std::env::set_var("CERF_DIR", "/tmp/test"); }
-        let cmd = parse_line("cd $CERF_DIR").unwrap();
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("CERF_DIR".to_string(), "/tmp/test".to_string());
+        let cmd = parse_line_with_vars("cd $CERF_DIR", &vars).unwrap();
         assert_eq!(cmd.name.as_deref(), Some("cd"));
         assert_eq!(cmd.args, vec!["/tmp/test"]);
-        unsafe { std::env::remove_var("CERF_DIR"); }
     }
 
     #[test]
     fn test_parse_line_expands_var_in_quoted_arg() {
-        unsafe { std::env::set_var("CERF_MSG", "hello world"); }
-        let cmd = parse_line("echo \"$CERF_MSG\"").unwrap();
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("CERF_MSG".to_string(), "hello world".to_string());
+        let cmd = parse_line_with_vars("echo \"$CERF_MSG\"", &vars).unwrap();
         assert_eq!(cmd.name.as_deref(), Some("echo"));
         assert_eq!(cmd.args, vec!["hello world"]);
-        unsafe { std::env::remove_var("CERF_MSG"); }
     }
 
     #[test]
     fn test_parse_line_expands_path_var() {
-        let path_val = std::env::var("PATH").unwrap_or_default();
-        let expanded = expand_env_vars("echo $PATH");
-        assert!(expanded.contains(&path_val), "expanded line should contain the PATH value");
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("PATH".to_string(), "some_path".to_string());
+        let expanded = expand_vars("echo $PATH", &vars);
+        assert!(expanded.contains("some_path"), "expanded line should contain the PATH value");
     }
 
     // ── shell variable tests ──────────────────────────────────────────────
