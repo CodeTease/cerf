@@ -121,9 +121,24 @@ pub fn parse_single_command(input: &str) -> IResult<&str, ParsedCommand> {
 
 // ── Pipeline expression (cmd | cmd | …) ──────────────────────────────────
 
-/// Parse a pipeline: `command (| command)*`.
+/// Parse a pipeline: `[!] command (| command)*`.
 pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
-    let (mut rest, first) = parse_single_command(input)?;
+    let (input, _) = multispace0(input)?;
+    
+    // Check for logical NOT operator '!'
+    let (rest, negated) = if input.starts_with('!') {
+        // '!' must be its own token or followed by whitespace
+        let after_bang = &input[1..];
+        if after_bang.is_empty() || after_bang.starts_with(char::is_whitespace) {
+            (after_bang, true)
+        } else {
+            (input, false)
+        }
+    } else {
+        (input, false)
+    };
+
+    let (mut rest, first) = parse_single_command(rest)?;
     let mut commands = vec![first];
 
     loop {
@@ -143,7 +158,7 @@ pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
         }
     }
 
-    Ok((rest, Pipeline { commands }))
+    Ok((rest, Pipeline { commands, negated }))
 }
 
 // ── Connector parsing ─────────────────────────────────────────────────────

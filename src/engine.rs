@@ -380,7 +380,13 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
     // Single-command pipeline — just run the command directly (supports builtins).
     if cmds.len() == 1 {
-        return execute_simple(&cmds[0], state);
+        let (res, code) = execute_simple(&cmds[0], state);
+        let final_code = if pipeline.negated {
+            if code == 0 { 1 } else { 0 }
+        } else {
+            code
+        };
+        return (res, final_code);
     }
 
     // Multi-command pipeline: fork external processes connected by pipes.
@@ -506,7 +512,13 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         }
     }
 
-    (ExecutionResult::KeepRunning, last_code)
+    let final_code = if pipeline.negated {
+        if last_code == 0 { 1 } else { 0 }
+    } else {
+        last_code
+    };
+
+    (ExecutionResult::KeepRunning, final_code)
 }
 
 // ── Command list (&&, ||, ;) ───────────────────────────────────────────────

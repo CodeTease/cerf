@@ -28,6 +28,7 @@ pub struct Redirect {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pipeline {
     pub commands: Vec<ParsedCommand>, // length ≥ 1
+    pub negated: bool,
 }
 
 /// How consecutive commands are joined.

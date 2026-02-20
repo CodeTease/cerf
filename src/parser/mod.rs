@@ -188,6 +188,26 @@ mod tests {
     }
 
     #[test]
+    fn test_not_operator() {
+        let entries = parse_pipeline("! ls").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].pipeline.negated);
+        assert_eq!(entries[0].pipeline.commands[0].name, "ls");
+
+        let entries = parse_pipeline("!  ls -la").unwrap();
+        assert_eq!(entries[0].pipeline.commands[0].name, "ls");
+        assert!(entries[0].pipeline.negated);
+    }
+
+    #[test]
+    fn test_not_with_pipe() {
+        let entries = parse_pipeline("! ls | grep foo").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].pipeline.negated);
+        assert_eq!(entries[0].pipeline.commands.len(), 2);
+    }
+
+    #[test]
     fn test_pipe_with_connectors() {
         let entries = parse_pipeline("ls | grep foo && echo done").unwrap();
         assert_eq!(entries.len(), 2);
