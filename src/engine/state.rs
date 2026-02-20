@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
 
 pub struct ShellState {
@@ -7,17 +8,56 @@ pub struct ShellState {
     pub aliases: HashMap<String, String>,
     /// All currently-defined shell variables.
     pub variables: HashMap<String, String>,
+    /// Command history (persisted to `~/.cerf_history`).
+    pub history: Vec<String>,
 }
 
 impl ShellState {
     pub fn new() -> Self {
         let variables = init_env_vars();
 
-        ShellState {
+        let mut state = ShellState {
             previous_dir: None,
             aliases: HashMap::new(),
             variables,
+            history: Vec::new(),
+        };
+        state.load_history();
+        state
+    }
+
+    /// Load history entries from `~/.cerf_history` (if it exists).
+    pub fn load_history(&mut self) {
+        if let Some(path) = Self::history_path() {
+            if path.exists() {
+                if let Ok(contents) = std::fs::read_to_string(&path) {
+                    self.history = contents
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(|l| l.to_string())
+                        .collect();
+                }
+            }
         }
+    }
+
+    /// Append a single line to the in-memory history and to `~/.cerf_history`.
+    pub fn add_history(&mut self, line: &str) {
+        self.history.push(line.to_string());
+        if let Some(path) = Self::history_path() {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(f, "{}", line);
+            }
+        }
+    }
+
+    /// Return the path to `~/.cerf_history`.
+    fn history_path() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join(".cerf_history"))
     }
 }
 

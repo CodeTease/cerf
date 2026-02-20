@@ -111,6 +111,14 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                 (ExecutionResult::KeepRunning, 0)
             }
         },
+        "source" | "." => {
+            builtins::source::run(&args, state)
+        },
+        "history" => {
+            let redir_file = stdout_redir.and_then(|r| open_stdout_redirect(r).ok());
+            builtins::history::run(state, redir_file);
+            (ExecutionResult::KeepRunning, 0)
+        },
         "type" => {
             if let Some(redir) = stdout_redir {
                 match open_stdout_redirect(redir) {

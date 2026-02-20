@@ -44,6 +44,9 @@ fn main() -> rustyline::Result<()> {
         return Ok(());
     }
 
+    // Source the user profile (~/.cerfrc) for interactive sessions.
+    source_profile(&mut state);
+
     let mut rl = DefaultEditor::new()?;
 
     loop {
@@ -56,6 +59,7 @@ fn main() -> rustyline::Result<()> {
                     continue;
                 }
                 let _ = rl.add_history_entry(input);
+                state.add_history(input);
 
                 if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
                     match engine::execute_list(entries, &mut state) {
@@ -78,4 +82,15 @@ fn main() -> rustyline::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Source `~/.cerfrc` if it exists.
+fn source_profile(state: &mut ShellState) {
+    if let Some(home) = dirs::home_dir() {
+        let rc_path = home.join(".cerfrc");
+        if rc_path.exists() {
+            let path_str = rc_path.to_string_lossy().to_string();
+            builtins::source::run(&[path_str], state);
+        }
+    }
 }
