@@ -11,19 +11,58 @@ use super::ast::{Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
 
 // ── Low-level nom parsers ──────────────────────────────────────────────────
 
-pub fn parse_quoted_string(input: &str) -> IResult<&str, String> {
+/// Parse a double-quoted string: `"…"` — returns the content without quotes.
+fn parse_double_quoted(input: &str) -> IResult<&str, String> {
     let (input, content) = delimited(char('"'), is_not("\""), char('"')).parse(input)?;
     Ok((input, content.to_string()))
 }
 
-pub fn parse_unquoted_string(input: &str) -> IResult<&str, String> {
-    // Stop at whitespace, quotes, AND the connector / redirect characters ; & | > <
-    let (input, content) = is_not(" \t\r\n\";|&><")(input)?;
+/// Parse a single-quoted string: `'…'` — returns the content without quotes.
+/// Single quotes suppress ALL special characters (POSIX behaviour).
+fn parse_single_quoted(input: &str) -> IResult<&str, String> {
+    let (input, content) = delimited(char('\''), is_not("'"), char('\'')).parse(input)?;
     Ok((input, content.to_string()))
 }
 
+/// Parse an unquoted run of ordinary characters.
+/// Stops at whitespace, quotes (`"` or `'`), and shell meta-characters.
+fn parse_unquoted(input: &str) -> IResult<&str, String> {
+    let (input, content) = is_not(" \t\r\n\"';&|><")(input)?;
+    Ok((input, content.to_string()))
+}
+
+/// Parse one "word" (shell argument/token).
+///
+/// A word is one or more adjacent segments where each segment is one of:
+/// - an unquoted run (no whitespace / meta-chars)
+/// - a `'…'` single-quoted string
+/// - a `"…"` double-quoted string
+///
+/// Adjacent segments are concatenated, so `foo'bar baz'"qux"` → `foobar bazqux`.
+/// This matches POSIX sh tokenisation.
 pub fn parse_arg(input: &str) -> IResult<&str, String> {
-    alt((parse_quoted_string, parse_unquoted_string)).parse(input)
+    // We need at least one segment.
+    let (mut rest, first) = alt((
+        parse_double_quoted,
+        parse_single_quoted,
+        parse_unquoted,
+    ))
+    .parse(input)?;
+
+    let mut word = first;
+
+    // Greedily consume further adjacent segments (no whitespace between them).
+    loop {
+        match alt((parse_double_quoted, parse_single_quoted, parse_unquoted)).parse(rest) {
+            Ok((after, segment)) => {
+                word.push_str(&segment);
+                rest = after;
+            }
+            Err(_) => break,
+        }
+    }
+
+    Ok((rest, word))
 }
 
 // ── Redirect parsing ──────────────────────────────────────────────────────
