@@ -4,10 +4,10 @@ mod expand;
 
 // Re-export the public surface so that `crate::parser::*` keeps working
 // for all existing callers (engine.rs, main.rs, etc.).
-pub use ast::{CommandEntry, Connector, ParsedCommand};
+pub use ast::{CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
 pub use expand::expand_env_vars;
 
-use combinators::{parse_connector, parse_single_command};
+use combinators::{parse_connector, parse_pipeline_expr};
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@ use combinators::{parse_connector, parse_single_command};
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
-pub fn parse_pipeline(input: &str) -> Option<Vec<CommandEntry>> {
+pub fn parse_input(input: &str) -> Option<Vec<CommandEntry>> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
@@ -28,15 +28,15 @@ pub fn parse_pipeline(input: &str) -> Option<Vec<CommandEntry>> {
     let mut entries: Vec<CommandEntry> = Vec::new();
     let mut rest = s;
 
-    // Parse the first command (no leading connector).
-    let (after_first, first_cmd) = match parse_single_command(rest) {
+    // Parse the first pipeline (no leading connector).
+    let (after_first, first_pipeline) = match parse_pipeline_expr(rest) {
         Ok(v) => v,
         Err(_) => return None,
     };
-    entries.push(CommandEntry { connector: None, command: first_cmd });
+    entries.push(CommandEntry { connector: None, pipeline: first_pipeline });
     rest = after_first;
 
-    // Parse (connector, command) pairs until input is exhausted.
+    // Parse (connector, pipeline) pairs until input is exhausted.
     loop {
         if rest.trim().is_empty() {
             break;
@@ -45,21 +45,32 @@ pub fn parse_pipeline(input: &str) -> Option<Vec<CommandEntry>> {
             Ok(v) => v,
             Err(_) => break,
         };
-        let (after_cmd, cmd) = match parse_single_command(after_conn) {
+        let (after_pipeline, pipeline) = match parse_pipeline_expr(after_conn) {
             Ok(v) => v,
             Err(_) => break,
         };
-        entries.push(CommandEntry { connector: Some(conn), command: cmd });
-        rest = after_cmd;
+        entries.push(CommandEntry { connector: Some(conn), pipeline });
+        rest = after_pipeline;
     }
 
     if entries.is_empty() { None } else { Some(entries) }
 }
 
+/// Backwards-compatible alias — kept so call-sites in main.rs don't break.
+pub fn parse_pipeline(input: &str) -> Option<Vec<CommandEntry>> {
+    parse_input(input)
+}
+
 /// Backwards-compatible single-command parse (used in tests & legacy paths).
 #[allow(dead_code)]
 pub fn parse_line(input: &str) -> Option<ParsedCommand> {
-    parse_pipeline(input).and_then(|mut v| if v.len() == 1 { Some(v.remove(0).command) } else { None })
+    parse_input(input).and_then(|mut v| {
+        if v.len() == 1 && v[0].pipeline.commands.len() == 1 {
+            Some(v.remove(0).pipeline.commands.remove(0))
+        } else {
+            None
+        }
+    })
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -117,9 +128,9 @@ mod tests {
         let entries = parse_pipeline("echo hello ; echo world").unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].command.name, "echo");
+        assert_eq!(entries[0].pipeline.commands[0].name, "echo");
         assert_eq!(entries[1].connector, Some(Connector::Semi));
-        assert_eq!(entries[1].command.name, "echo");
+        assert_eq!(entries[1].pipeline.commands[0].name, "echo");
     }
 
     #[test]
@@ -127,20 +138,20 @@ mod tests {
         let entries = parse_pipeline("make && make install").unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].command.name, "make");
+        assert_eq!(entries[0].pipeline.commands[0].name, "make");
         assert_eq!(entries[1].connector, Some(Connector::And));
-        assert_eq!(entries[1].command.name, "make");
-        assert_eq!(entries[1].command.args, vec!["install"]);
+        assert_eq!(entries[1].pipeline.commands[0].name, "make");
+        assert_eq!(entries[1].pipeline.commands[0].args, vec!["install"]);
     }
 
     #[test]
     fn test_or_operator() {
         let entries = parse_pipeline("cat file.txt || echo missing").unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].command.name, "cat");
+        assert_eq!(entries[0].pipeline.commands[0].name, "cat");
         assert_eq!(entries[1].connector, Some(Connector::Or));
-        assert_eq!(entries[1].command.name, "echo");
-        assert_eq!(entries[1].command.args, vec!["missing"]);
+        assert_eq!(entries[1].pipeline.commands[0].name, "echo");
+        assert_eq!(entries[1].pipeline.commands[0].args, vec!["missing"]);
     }
 
     #[test]
@@ -150,6 +161,91 @@ mod tests {
         assert_eq!(entries[1].connector, Some(Connector::And));
         assert_eq!(entries[2].connector, Some(Connector::Or));
         assert_eq!(entries[3].connector, Some(Connector::Semi));
+    }
+
+    // ── piping tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_single_pipe() {
+        let entries = parse_pipeline("ls | grep foo").unwrap();
+        assert_eq!(entries.len(), 1);
+        let pipeline = &entries[0].pipeline;
+        assert_eq!(pipeline.commands.len(), 2);
+        assert_eq!(pipeline.commands[0].name, "ls");
+        assert_eq!(pipeline.commands[1].name, "grep");
+        assert_eq!(pipeline.commands[1].args, vec!["foo"]);
+    }
+
+    #[test]
+    fn test_multi_pipe() {
+        let entries = parse_pipeline("cat f | sort | uniq").unwrap();
+        assert_eq!(entries.len(), 1);
+        let pipeline = &entries[0].pipeline;
+        assert_eq!(pipeline.commands.len(), 3);
+        assert_eq!(pipeline.commands[0].name, "cat");
+        assert_eq!(pipeline.commands[1].name, "sort");
+        assert_eq!(pipeline.commands[2].name, "uniq");
+    }
+
+    #[test]
+    fn test_pipe_with_connectors() {
+        let entries = parse_pipeline("ls | grep foo && echo done").unwrap();
+        assert_eq!(entries.len(), 2);
+        // First entry is a pipeline: ls | grep foo
+        assert_eq!(entries[0].pipeline.commands.len(), 2);
+        assert_eq!(entries[0].pipeline.commands[0].name, "ls");
+        assert_eq!(entries[0].pipeline.commands[1].name, "grep");
+        // Second entry is a simple command: echo done
+        assert_eq!(entries[1].connector, Some(Connector::And));
+        assert_eq!(entries[1].pipeline.commands.len(), 1);
+        assert_eq!(entries[1].pipeline.commands[0].name, "echo");
+    }
+
+    // ── redirection tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_redirect_stdout() {
+        let entries = parse_pipeline("echo hi > out.txt").unwrap();
+        let cmd = &entries[0].pipeline.commands[0];
+        assert_eq!(cmd.name, "echo");
+        assert_eq!(cmd.args, vec!["hi"]);
+        assert_eq!(cmd.redirects.len(), 1);
+        assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutOverwrite);
+        assert_eq!(cmd.redirects[0].file, "out.txt");
+    }
+
+    #[test]
+    fn test_redirect_append() {
+        let entries = parse_pipeline("echo hi >> out.txt").unwrap();
+        let cmd = &entries[0].pipeline.commands[0];
+        assert_eq!(cmd.redirects.len(), 1);
+        assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutAppend);
+        assert_eq!(cmd.redirects[0].file, "out.txt");
+    }
+
+    #[test]
+    fn test_redirect_stdin() {
+        let entries = parse_pipeline("sort < in.txt").unwrap();
+        let cmd = &entries[0].pipeline.commands[0];
+        assert_eq!(cmd.name, "sort");
+        assert_eq!(cmd.redirects.len(), 1);
+        assert_eq!(cmd.redirects[0].kind, RedirectKind::StdinFrom);
+        assert_eq!(cmd.redirects[0].file, "in.txt");
+    }
+
+    #[test]
+    fn test_pipe_with_redirect() {
+        let entries = parse_pipeline("cat < in.txt | sort > out.txt").unwrap();
+        let pipeline = &entries[0].pipeline;
+        assert_eq!(pipeline.commands.len(), 2);
+        // First command: cat < in.txt
+        assert_eq!(pipeline.commands[0].name, "cat");
+        assert_eq!(pipeline.commands[0].redirects.len(), 1);
+        assert_eq!(pipeline.commands[0].redirects[0].kind, RedirectKind::StdinFrom);
+        // Last command: sort > out.txt
+        assert_eq!(pipeline.commands[1].name, "sort");
+        assert_eq!(pipeline.commands[1].redirects.len(), 1);
+        assert_eq!(pipeline.commands[1].redirects[0].kind, RedirectKind::StdoutOverwrite);
     }
 
     // ── integration: parse_pipeline with env expansion ────────────────────
