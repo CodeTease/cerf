@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,11 +12,16 @@ use crate::signals;
 
 pub struct ShellState {
     pub previous_dir: Option<PathBuf>,
+    /// All currently-defined aliases. Maps alias name → replacement string.
+    pub aliases: HashMap<String, String>,
 }
 
 impl ShellState {
     pub fn new() -> Self {
-        ShellState { previous_dir: None }
+        ShellState {
+            previous_dir: None,
+            aliases: HashMap::new(),
+        }
     }
 }
 
@@ -59,9 +65,63 @@ fn resolve_redirects(redirects: &[Redirect]) -> (Option<&Redirect>, Option<&Redi
     (stdin_redir, stdout_redir)
 }
 
-// ── Builtin check ─────────────────────────────────────────────────────────
+// ── Alias expansion ───────────────────────────────────────────────────────
 
+/// Expand aliases on a `ParsedCommand` in-place (bash-style, one level).
+///
+/// If `cmd.name` matches an alias whose value is a single word, the name is
+/// replaced and the replacement's trailing args are prepended to `cmd.args`.
+/// If the alias value is a multi-word string, it is re-parsed: the first
+/// token becomes the new command name and the rest are prepended to the
+/// existing args.
+///
+/// Returns `true` when an expansion happened.
+fn expand_alias(cmd: &mut ParsedCommand, aliases: &HashMap<String, String>) -> bool {
+    if let Some(value) = aliases.get(&cmd.name) {
+        let value = value.clone();
+        // Tokenise the alias value with a simple whitespace split that
+        // respects single-quoted segments (good enough for shell aliases).
+        let tokens = shell_split(&value);
+        if tokens.is_empty() {
+            return false;
+        }
+        // The first token is the new command name.
+        cmd.name = tokens[0].clone();
+        // Any remaining alias tokens are prepended to the original args.
+        let mut new_args = tokens[1..].to_vec();
+        new_args.extend(cmd.args.drain(..));
+        cmd.args = new_args;
+        return true;
+    }
+    false
+}
 
+/// Very small shell-word splitter that honours `'…'` quoting.
+/// Used only for parsing alias values.
+fn shell_split(s: &str) -> Vec<String> {
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\'' if !in_single => in_single = true,
+            '\'' if in_single  => in_single = false,
+            ' ' | '\t' if !in_single => {
+                if !current.is_empty() {
+                    tokens.push(current.clone());
+                    current.clear();
+                }
+            }
+            other => current.push(other),
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
 
 // ── Single command (no pipe) ──────────────────────────────────────────────
 
@@ -71,6 +131,14 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
     let (stdin_redir, stdout_redir) = resolve_redirects(&cmd.redirects);
 
     match cmd.name.as_str() {
+        "alias" => {
+            builtins::alias::run(&cmd.args, &mut state.aliases);
+            (ExecutionResult::KeepRunning, 0)
+        },
+        "unalias" => {
+            builtins::unalias::run(&cmd.args, &mut state.aliases);
+            (ExecutionResult::KeepRunning, 0)
+        },
         "cd" => {
             let code = match builtins::cd::run(&cmd.args, state) {
                 Ok(()) => 0,
@@ -83,7 +151,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                 match open_stdout_redirect(redir) {
                     Ok(mut f) => {
                         let cwd = std::env::current_dir()
-                            .unwrap_or_else(|_| PathBuf::from("."));
+                            .unwrap_or_else(|_ | PathBuf::from("."));
                         let _ = writeln!(f, "{}", cwd.display());
                         (ExecutionResult::KeepRunning, 0)
                     }
@@ -122,7 +190,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                 match open_stdout_redirect(redir) {
                     Ok(mut f) => {
                         for arg in &cmd.args {
-                            let output = builtins::type_cmd::type_of(arg);
+                            let output = builtins::type_cmd::type_of(arg, &state.aliases);
                             let _ = writeln!(f, "{}", output);
                         }
                         (ExecutionResult::KeepRunning, 0)
@@ -130,7 +198,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                     Err(e) => { eprintln!("{}", e); (ExecutionResult::KeepRunning, 1) }
                 }
             } else {
-                builtins::type_cmd::run(&cmd.args);
+                builtins::type_cmd::run(&cmd.args, &state.aliases);
                 (ExecutionResult::KeepRunning, 0)
             }
         },
@@ -198,6 +266,14 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
 /// Execute a full pipeline (one or more commands connected by `|`).
 /// Returns `(ExecutionResult, exit_code)`.
 pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult, i32) {
+    let mut pipeline = pipeline.clone();
+
+    // Expand aliases on every command's name (only the first command of a
+    // pipeline gets alias-expanded, same as bash behaviour for safety).
+    for cmd in &mut pipeline.commands {
+        expand_alias(cmd, &state.aliases);
+    }
+
     let cmds = &pipeline.commands;
 
     // Single-command pipeline — just run the command directly (supports builtins).
