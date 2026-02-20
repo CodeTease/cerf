@@ -45,11 +45,11 @@ fn main() -> rustyline::Result<()> {
                     continue;
                 }
                 let _ = rl.add_history_entry(input);
-                
-                if let Some(cmd) = parser::parse_line(input) {
-                    match engine::execute(cmd, &mut state) {
-                         engine::ExecutionResult::Exit => break,
-                         engine::ExecutionResult::KeepRunning => {},
+
+                if let Some(entries) = parser::parse_pipeline(input) {
+                    match engine::execute_list(entries, &mut state) {
+                        engine::ExecutionResult::Exit => break,
+                        engine::ExecutionResult::KeepRunning => {},
                     }
                 }
             },

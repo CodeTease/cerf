@@ -34,6 +34,7 @@ pub fn init() {
 }
 
 #[cfg(windows)]
+#[allow(dead_code)]
 pub fn restore_default() {
     // No-op on Windows
 }

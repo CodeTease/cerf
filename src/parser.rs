@@ -9,11 +9,36 @@ use nom::{
     Parser,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+// ── AST types ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ParsedCommand {
     pub name: String,
     pub args: Vec<String>,
 }
+
+/// How consecutive commands are joined.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Connector {
+    /// `;`  — always run the next command
+    Semi,
+    /// `&&` — run next only if previous succeeded (exit code 0)
+    And,
+    /// `||` — run next only if previous failed  (exit code ≠ 0)
+    Or,
+}
+
+/// A single entry in a command list:
+/// - `connector` is `None` for the very first command, `Some(…)` for every
+///   subsequent command and describes the operator that precedes it.
+/// - `command` is the command to execute.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct CommandEntry {
+    pub connector: Option<Connector>,
+    pub command: ParsedCommand,
+}
+
+// ── Environment-variable expansion ────────────────────────────────────────
 
 /// Expand environment variable references in `input` before parsing.
 ///
@@ -71,13 +96,16 @@ pub fn expand_env_vars(input: &str) -> String {
     result
 }
 
+// ── Low-level nom parsers ──────────────────────────────────────────────────
+
 fn parse_quoted_string(input: &str) -> IResult<&str, String> {
     let (input, content) = delimited(char('"'), is_not("\""), char('"')).parse(input)?;
     Ok((input, content.to_string()))
 }
 
 fn parse_unquoted_string(input: &str) -> IResult<&str, String> {
-    let (input, content) = is_not(" \t\r\n\"")(input)?;
+    // Stop at whitespace, quotes, AND the connector characters ; & |
+    let (input, content) = is_not(" \t\r\n\";|&")(input)?;
     Ok((input, content.to_string()))
 }
 
@@ -85,7 +113,7 @@ fn parse_arg(input: &str) -> IResult<&str, String> {
     alt((parse_quoted_string, parse_unquoted_string)).parse(input)
 }
 
-fn parse_command_internal(input: &str) -> IResult<&str, ParsedCommand> {
+fn parse_single_command(input: &str) -> IResult<&str, ParsedCommand> {
     let (input, _) = multispace0(input)?;
     let (input, name) = parse_arg(input)?;
 
@@ -96,7 +124,25 @@ fn parse_command_internal(input: &str) -> IResult<&str, ParsedCommand> {
     Ok((input, ParsedCommand { name, args }))
 }
 
-pub fn parse_line(input: &str) -> Option<ParsedCommand> {
+/// Parse a connector operator: `&&`, `||`, or `;`.
+fn parse_connector(input: &str) -> IResult<&str, Connector> {
+    let (input, _) = multispace0(input)?;
+    alt((
+        // Two-character operators must come before single-character ones.
+        nom::combinator::map(nom::bytes::complete::tag("&&"), |_| Connector::And),
+        nom::combinator::map(nom::bytes::complete::tag("||"), |_| Connector::Or),
+        nom::combinator::map(char(';'), |_| Connector::Semi),
+    ))
+    .parse(input)
+}
+
+// ── Public API ────────────────────────────────────────────────────────────
+
+/// Parse an entire input line into a list of [`CommandEntry`] items.
+///
+/// Returns `None` if the line is empty or a comment.
+/// Returns `Some(entries)` where `entries` has at least one element.
+pub fn parse_pipeline(input: &str) -> Option<Vec<CommandEntry>> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
@@ -104,47 +150,77 @@ pub fn parse_line(input: &str) -> Option<ParsedCommand> {
 
     // Expand environment variables before handing the line to nom.
     let expanded = expand_env_vars(input);
+    let s = expanded.trim();
 
-    match parse_command_internal(&expanded) {
-        Ok((_, cmd)) => Some(cmd),
-        Err(_) => None,
+    let mut entries: Vec<CommandEntry> = Vec::new();
+    let mut rest = s;
+
+    // Parse the first command (no leading connector).
+    let (after_first, first_cmd) = match parse_single_command(rest) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+    entries.push(CommandEntry { connector: None, command: first_cmd });
+    rest = after_first;
+
+    // Parse (connector, command) pairs until input is exhausted.
+    loop {
+        if rest.trim().is_empty() {
+            break;
+        }
+        let (after_conn, conn) = match parse_connector(rest) {
+            Ok(v) => v,
+            Err(_) => break,
+        };
+        let (after_cmd, cmd) = match parse_single_command(after_conn) {
+            Ok(v) => v,
+            Err(_) => break,
+        };
+        entries.push(CommandEntry { connector: Some(conn), command: cmd });
+        rest = after_cmd;
     }
+
+    if entries.is_empty() { None } else { Some(entries) }
 }
+
+/// Backwards-compatible single-command parse (used in tests & legacy paths).
+#[allow(dead_code)]
+pub fn parse_line(input: &str) -> Option<ParsedCommand> {
+    parse_pipeline(input).and_then(|mut v| if v.len() == 1 { Some(v.remove(0).command) } else { None })
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // ── existing parser tests ──────────────────────────────────────────────
+    // ── single-command tests ───────────────────────────────────────────────
 
     #[test]
     fn test_parse_simple() {
-        let input = "ls -la";
-        let cmd = parse_line(input).unwrap();
+        let cmd = parse_line("ls -la").unwrap();
         assert_eq!(cmd.name, "ls");
         assert_eq!(cmd.args, vec!["-la"]);
     }
 
     #[test]
     fn test_parse_quoted() {
-        let input = "echo \"hello world\"";
-        let cmd = parse_line(input).unwrap();
+        let cmd = parse_line("echo \"hello world\"").unwrap();
         assert_eq!(cmd.name, "echo");
         assert_eq!(cmd.args, vec!["hello world"]);
     }
 
     #[test]
     fn test_parse_mixed() {
-        let input = "cd \"My Documents\" backup";
-        let cmd = parse_line(input).unwrap();
+        let cmd = parse_line("cd \"My Documents\" backup").unwrap();
         assert_eq!(cmd.name, "cd");
         assert_eq!(cmd.args, vec!["My Documents", "backup"]);
     }
 
     #[test]
     fn test_extra_spaces() {
-        let input = "  ls   -la  ";
-        let cmd = parse_line(input).unwrap();
+        let cmd = parse_line("  ls   -la  ").unwrap();
         assert_eq!(cmd.name, "ls");
         assert_eq!(cmd.args, vec!["-la"]);
     }
@@ -161,7 +237,49 @@ mod tests {
         assert!(parse_line("   # comment indented").is_none());
     }
 
-    // ── expand_env_vars unit tests ─────────────────────────────────────────
+    // ── connector / pipeline tests ────────────────────────────────────────
+
+    #[test]
+    fn test_semicolon_two_commands() {
+        let entries = parse_pipeline("echo hello ; echo world").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].connector, None);
+        assert_eq!(entries[0].command.name, "echo");
+        assert_eq!(entries[1].connector, Some(Connector::Semi));
+        assert_eq!(entries[1].command.name, "echo");
+    }
+
+    #[test]
+    fn test_and_operator() {
+        let entries = parse_pipeline("make && make install").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].connector, None);
+        assert_eq!(entries[0].command.name, "make");
+        assert_eq!(entries[1].connector, Some(Connector::And));
+        assert_eq!(entries[1].command.name, "make");
+        assert_eq!(entries[1].command.args, vec!["install"]);
+    }
+
+    #[test]
+    fn test_or_operator() {
+        let entries = parse_pipeline("cat file.txt || echo missing").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].command.name, "cat");
+        assert_eq!(entries[1].connector, Some(Connector::Or));
+        assert_eq!(entries[1].command.name, "echo");
+        assert_eq!(entries[1].command.args, vec!["missing"]);
+    }
+
+    #[test]
+    fn test_chained_operators() {
+        let entries = parse_pipeline("a && b || c ; d").unwrap();
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[1].connector, Some(Connector::And));
+        assert_eq!(entries[2].connector, Some(Connector::Or));
+        assert_eq!(entries[3].connector, Some(Connector::Semi));
+    }
+
+    // ── expand_env_vars unit tests ────────────────────────────────────────
 
     #[test]
     fn test_expand_known_var() {
@@ -173,7 +291,6 @@ mod tests {
 
     #[test]
     fn test_expand_missing_var_is_empty() {
-        // Ensure the variable definitely does not exist.
         unsafe { std::env::remove_var("CERF_UNDEFINED_XYZ"); }
         assert_eq!(expand_env_vars("$CERF_UNDEFINED_XYZ"), "");
         assert_eq!(expand_env_vars("${CERF_UNDEFINED_XYZ}"), "");
@@ -188,7 +305,6 @@ mod tests {
 
     #[test]
     fn test_expand_bare_dollar_kept() {
-        // A lone $ with no identifier after it should be left as-is.
         assert_eq!(expand_env_vars("$ "), "$ ");
         assert_eq!(expand_env_vars("$"), "$");
     }
@@ -219,7 +335,7 @@ mod tests {
         assert_eq!(expand_env_vars(""), "");
     }
 
-    // ── integration: parse_line with env expansion ─────────────────────────
+    // ── integration: parse_pipeline with env expansion ────────────────────
 
     #[test]
     fn test_parse_line_expands_var_in_arg() {
@@ -235,20 +351,14 @@ mod tests {
         unsafe { std::env::set_var("CERF_MSG", "hello world"); }
         let cmd = parse_line("echo \"$CERF_MSG\"").unwrap();
         assert_eq!(cmd.name, "echo");
-        // After expansion the quotes wrap the already-expanded string.
         assert_eq!(cmd.args, vec!["hello world"]);
         unsafe { std::env::remove_var("CERF_MSG"); }
     }
 
     #[test]
     fn test_parse_line_expands_path_var() {
-        // Verify that $PATH is expanded by `expand_env_vars`.
-        // We don't pipe through the full parser because PATH may contain spaces
-        // (on Windows: "C:\Program Files\...") which nom would split as multiple
-        // arguments – that's expected shell-splitting behaviour, not a bug.
         let path_val = std::env::var("PATH").unwrap_or_default();
         let expanded = expand_env_vars("echo $PATH");
         assert!(expanded.contains(&path_val), "expanded line should contain the PATH value");
     }
 }
-
