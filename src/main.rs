@@ -33,8 +33,18 @@ fn get_prompt() -> String {
 
 fn main() -> rustyline::Result<()> {
     signals::init();
-    let mut rl = DefaultEditor::new()?;
     let mut state = ShellState::new();
+
+    let args: Vec<String> = env::args().collect();
+    if args.len() >= 3 && args[1] == "-c" {
+        let input = &args[2];
+        if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
+            engine::execute_list(entries, &mut state);
+        }
+        return Ok(());
+    }
+
+    let mut rl = DefaultEditor::new()?;
 
     loop {
         let prompt = get_prompt();
