@@ -1,5 +1,4 @@
 use std::env;
-use std::path::PathBuf;
 use crate::engine::ShellState;
 
 pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
@@ -10,22 +9,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
     } else if args[0] == "-" {
         state.previous_dir.clone().ok_or("OLDPWD not set".to_string())?
     } else {
-        let path_str = &args[0];
-        if path_str.starts_with("~") {
-             if let Some(home) = dirs::home_dir() {
-                 if path_str == "~" {
-                     home
-                 } else if path_str.starts_with("~/") {
-                      home.join(&path_str[2..])
-                 } else {
-                      PathBuf::from(path_str)
-                 }
-             } else {
-                 PathBuf::from(path_str)
-             }
-        } else {
-            PathBuf::from(path_str)
-        }
+        crate::engine::expand_home(&args[0])
     };
 
     if let Err(_) = env::set_current_dir(&target) {

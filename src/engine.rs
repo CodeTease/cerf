@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf, Component};
 use std::process::{Command, Stdio};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -89,15 +89,17 @@ pub enum ExecutionResult {
 fn open_stdout_redirect(redirect: &Redirect) -> Result<File, String> {
     match redirect.kind {
         RedirectKind::StdoutOverwrite => {
-            File::create(&redirect.file)
-                .map_err(|e| format!("cerf: {}: {}", redirect.file, e))
+            let path = expand_home(&redirect.file);
+            File::create(&path)
+                .map_err(|e| format!("cerf: {}: {}", path.display(), e))
         }
         RedirectKind::StdoutAppend => {
+            let path = expand_home(&redirect.file);
             OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&redirect.file)
-                .map_err(|e| format!("cerf: {}: {}", redirect.file, e))
+                .open(&path)
+                .map_err(|e| format!("cerf: {}: {}", path.display(), e))
         }
         _ => Err("not a stdout redirect".to_string()),
     }
@@ -105,8 +107,9 @@ fn open_stdout_redirect(redirect: &Redirect) -> Result<File, String> {
 
 /// Open a file for an input redirect (stdin).
 fn open_stdin_redirect(redirect: &Redirect) -> Result<File, String> {
-    File::open(&redirect.file)
-        .map_err(|e| format!("cerf: {}: {}", redirect.file, e))
+    let path = expand_home(&redirect.file);
+    File::open(&path)
+        .map_err(|e| format!("cerf: {}: {}", path.display(), e))
 }
 
 /// Find the first stdin and last stdout redirect from a list.
@@ -182,8 +185,38 @@ fn shell_split(s: &str) -> Vec<String> {
 
 // ── Path resolution helper ────────────────────────────────────────────────
 
+/// Normalize a path logically (resolving . and ..) without hitting the disk.
+/// This also ensures the use of native path separators.
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {},
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            _ => normalized.push(component),
+        }
+    }
+    normalized
+}
+
+/// Expand `~` to the home directory and normalize the resulting path.
+pub fn expand_home(path_str: &str) -> PathBuf {
+    if path_str == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home;
+        }
+    } else if path_str.starts_with("~/") || path_str.starts_with("~\\") {
+        if let Some(home) = dirs::home_dir() {
+            return normalize_path(&home.join(&path_str[2..]));
+        }
+    }
+    normalize_path(Path::new(path_str))
+}
+
 pub fn find_executable(cmd: &str) -> Option<PathBuf> {
-    let cmd_path = PathBuf::from(cmd);
+    let cmd_path = expand_home(cmd);
 
     // 1. If it has a separator, check it directly
     if cmd.contains('/') || (cfg!(windows) && cmd.contains('\\')) {
@@ -374,7 +407,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             }
         },
         _ => {
-            let resolved = find_executable(name).unwrap_or_else(|| PathBuf::from(name));
+            let resolved = find_executable(name).unwrap_or_else(|| expand_home(name));
             
             #[cfg(windows)]
             let mut command = {
@@ -511,7 +544,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             return (ExecutionResult::Exit, 0);
         }
 
-        let resolved = find_executable(name).unwrap_or_else(|| PathBuf::from(name));
+        let resolved = find_executable(name).unwrap_or_else(|| expand_home(name));
 
         #[cfg(windows)]
         let mut command = {

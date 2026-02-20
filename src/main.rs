@@ -18,7 +18,8 @@ fn get_prompt() -> String {
             if relative.as_os_str().is_empty() {
                 "~".to_string()
             } else {
-                format!("~/{}", relative.display())
+                let sep = std::path::MAIN_SEPARATOR;
+                format!("~{}{}", sep, relative.display())
             }
         } else {
             cwd.display().to_string()
