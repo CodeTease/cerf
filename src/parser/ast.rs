@@ -1,10 +1,35 @@
 // ── AST types ──────────────────────────────────────────────────────────────
 
+/// A single shell argument with quoting metadata.
+///
+/// `quoted == true` means the argument was entirely wrapped in quotes
+/// (`'…'` or `"…"`), and should **not** undergo glob expansion.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Arg {
+    pub value: String,
+    pub quoted: bool,
+}
+
+impl Arg {
+    pub fn new(value: impl Into<String>, quoted: bool) -> Self {
+        Self { value: value.into(), quoted }
+    }
+
+    pub fn plain(value: impl Into<String>) -> Self {
+        Self::new(value, false)
+    }
+}
+
+/// Helper: extract just the string values from a slice of `Arg`s.
+pub fn arg_values(args: &[Arg]) -> Vec<&str> {
+    args.iter().map(|a| a.value.as_str()).collect()
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ParsedCommand {
     pub assignments: Vec<(String, String)>,
     pub name: Option<String>,
-    pub args: Vec<String>,
+    pub args: Vec<Arg>,
     pub redirects: Vec<Redirect>,
 }
 

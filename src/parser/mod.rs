@@ -4,7 +4,7 @@ mod expand;
 
 // Re-export the public surface so that `crate::parser::*` keeps working
 // for all existing callers (engine.rs, main.rs, etc.).
-pub use ast::{CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
+pub use ast::{Arg, arg_values, CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
 pub use expand::expand_vars;
 
 use combinators::{parse_connector, parse_pipeline_expr};
@@ -87,28 +87,28 @@ mod tests {
     fn test_parse_simple() {
         let cmd = parse_line("ls -la").unwrap();
         assert_eq!(cmd.name.as_deref(), Some("ls"));
-        assert_eq!(cmd.args, vec!["-la"]);
+        assert_eq!(arg_values(&cmd.args), vec!["-la"]);
     }
 
     #[test]
     fn test_parse_quoted() {
         let cmd = parse_line("echo \"hello world\"").unwrap();
         assert_eq!(cmd.name.as_deref(), Some("echo"));
-        assert_eq!(cmd.args, vec!["hello world"]);
+        assert_eq!(arg_values(&cmd.args), vec!["hello world"]);
     }
 
     #[test]
     fn test_parse_mixed() {
         let cmd = parse_line("cd \"My Documents\" backup").unwrap();
         assert_eq!(cmd.name.as_deref(), Some("cd"));
-        assert_eq!(cmd.args, vec!["My Documents", "backup"]);
+        assert_eq!(arg_values(&cmd.args), vec!["My Documents", "backup"]);
     }
 
     #[test]
     fn test_extra_spaces() {
         let cmd = parse_line("  ls   -la  ").unwrap();
         assert_eq!(cmd.name.as_deref(), Some("ls"));
-        assert_eq!(cmd.args, vec!["-la"]);
+        assert_eq!(arg_values(&cmd.args), vec!["-la"]);
     }
 
     #[test]
@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("make"));
         assert_eq!(entries[1].connector, Some(Connector::And));
         assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("make"));
-        assert_eq!(entries[1].pipeline.commands[0].args, vec!["install"]);
+        assert_eq!(arg_values(&entries[1].pipeline.commands[0].args), vec!["install"]);
     }
 
     #[test]
@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("cat"));
         assert_eq!(entries[1].connector, Some(Connector::Or));
         assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
-        assert_eq!(entries[1].pipeline.commands[0].args, vec!["missing"]);
+        assert_eq!(arg_values(&entries[1].pipeline.commands[0].args), vec!["missing"]);
     }
 
     #[test]
@@ -180,7 +180,7 @@ mod tests {
         assert_eq!(pipeline.commands.len(), 2);
         assert_eq!(pipeline.commands[0].name.as_deref(), Some("ls"));
         assert_eq!(pipeline.commands[1].name.as_deref(), Some("grep"));
-        assert_eq!(pipeline.commands[1].args, vec!["foo"]);
+        assert_eq!(arg_values(&pipeline.commands[1].args), vec!["foo"]);
     }
 
     #[test]
@@ -240,7 +240,7 @@ mod tests {
         let entries = parse_pipeline("echo hi > out.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
         assert_eq!(cmd.name.as_deref(), Some("echo"));
-        assert_eq!(cmd.args, vec!["hi"]);
+        assert_eq!(arg_values(&cmd.args), vec!["hi"]);
         assert_eq!(cmd.redirects.len(), 1);
         assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutOverwrite);
         assert_eq!(cmd.redirects[0].file, "out.txt");
@@ -291,7 +291,7 @@ mod tests {
         vars.insert("CERF_DIR".to_string(), "/tmp/test".to_string());
         let cmd = parse_line_with_vars("cd $CERF_DIR", &vars).unwrap();
         assert_eq!(cmd.name.as_deref(), Some("cd"));
-        assert_eq!(cmd.args, vec!["/tmp/test"]);
+        assert_eq!(arg_values(&cmd.args), vec!["/tmp/test"]);
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
         vars.insert("CERF_MSG".to_string(), "hello world".to_string());
         let cmd = parse_line_with_vars("echo \"$CERF_MSG\"", &vars).unwrap();
         assert_eq!(cmd.name.as_deref(), Some("echo"));
-        assert_eq!(cmd.args, vec!["hello world"]);
+        assert_eq!(arg_values(&cmd.args), vec!["hello world"]);
     }
 
     #[test]
@@ -333,7 +333,7 @@ mod tests {
         let cmd = parse_line("VAR=val ls -l").unwrap();
         assert_eq!(cmd.name.as_deref(), Some("ls"));
         assert_eq!(cmd.assignments, vec![("VAR".to_string(), "val".to_string())]);
-        assert_eq!(cmd.args, vec!["-l"]);
+        assert_eq!(arg_values(&cmd.args), vec!["-l"]);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::ParsedCommand;
+use crate::parser::{Arg, ParsedCommand};
 
 /// Expand aliases on a `ParsedCommand` in-place (bash-style, one level).
 ///
@@ -27,7 +27,11 @@ pub fn expand_alias(cmd: &mut ParsedCommand, aliases: &HashMap<String, String>) 
         // The first token is the new command name.
         cmd.name = Some(tokens[0].clone());
         // Any remaining alias tokens are prepended to the original args.
-        let mut new_args = tokens[1..].to_vec();
+        // Alias-produced tokens are treated as unquoted (subject to glob).
+        let mut new_args: Vec<Arg> = tokens[1..]
+            .iter()
+            .map(|t| Arg::plain(t))
+            .collect();
         new_args.extend(cmd.args.drain(..));
         cmd.args = new_args;
         return true;

@@ -13,6 +13,7 @@ use super::state::{ShellState, ExecutionResult};
 use super::redirect::{open_stdout_redirect, open_stdin_redirect, resolve_redirects};
 use super::alias::expand_alias;
 use super::path::{expand_home, find_executable};
+use super::glob::expand_globs;
 
 // ── Single command (no pipe) ──────────────────────────────────────────────
 
@@ -48,21 +49,24 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
 
     let name = cmd.name.as_ref().unwrap();
 
+    // Expand globs on the argument list.
+    let args = expand_globs(&cmd.args);
+
     match name.as_str() {
         "alias" => {
-            builtins::alias::run(&cmd.args, &mut state.aliases);
+            builtins::alias::run(&args, &mut state.aliases);
             (ExecutionResult::KeepRunning, 0)
         },
         "unalias" => {
-            builtins::unalias::run(&cmd.args, &mut state.aliases);
+            builtins::unalias::run(&args, &mut state.aliases);
             (ExecutionResult::KeepRunning, 0)
         },
         "export" => {
-            builtins::export::run(&cmd.args, &mut state.variables);
+            builtins::export::run(&args, &mut state.variables);
             (ExecutionResult::KeepRunning, 0)
         },
         "cd" => {
-            let code = match builtins::cd::run(&cmd.args, state) {
+            let code = match builtins::cd::run(&args, state) {
                 Ok(()) => 0,
                 Err(e) => { eprintln!("cerf: cd: {}", e); 1 }
             };
@@ -93,7 +97,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             (ExecutionResult::KeepRunning, 0)
         },
         "echo" => {
-            let output = cmd.args.join(" ");
+            let output = args.join(" ");
             if let Some(redir) = stdout_redir {
                 match open_stdout_redirect(redir) {
                     Ok(mut f) => {
@@ -111,7 +115,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             if let Some(redir) = stdout_redir {
                 match open_stdout_redirect(redir) {
                     Ok(mut f) => {
-                        for arg in &cmd.args {
+                        for arg in &args {
                             let output = builtins::type_cmd::type_of(arg, &state.aliases);
                             let _ = writeln!(f, "{}", output);
                         }
@@ -120,7 +124,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                     Err(e) => { eprintln!("{}", e); (ExecutionResult::KeepRunning, 1) }
                 }
             } else {
-                builtins::type_cmd::run(&cmd.args, &state.aliases);
+                builtins::type_cmd::run(&args, &state.aliases);
                 (ExecutionResult::KeepRunning, 0)
             }
         },
@@ -145,7 +149,7 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             #[cfg(unix)]
             let mut command = Command::new(&resolved);
 
-            command.args(&cmd.args);
+            command.args(&args);
             command.envs(cmd.assignments.iter().map(|(k, v)| (k, v)));
 
             // Apply stdin redirect
@@ -240,14 +244,6 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         let name = match cmd.name.as_ref() {
             Some(n) => n,
             None => {
-                // Command with just assignments in a multi-command pipeline.
-                // In POSIX, each part of a pipeline is run in a subshell.
-                // For simplicity, we'll just skip this command after setting vars
-                // if we were in a forked process, but here we are in the main process
-                // forking children.
-                // We should probably spawn a dummy process or just skip it.
-                // Bash behavior: `VAR=val | cat` -> VAR is set in a subshell, then exit.
-                // We'll skip it for now.
                 continue;
             }
         };
@@ -263,6 +259,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         }
 
         let resolved = find_executable(name).unwrap_or_else(|| expand_home(name));
+
+        // Expand globs on the argument list.
+        let args = expand_globs(&cmd.args);
 
         #[cfg(windows)]
         let mut command = {
@@ -282,7 +281,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         #[cfg(unix)]
         let mut command = Command::new(&resolved);
 
-        command.args(&cmd.args);
+        command.args(&args);
         command.envs(cmd.assignments.iter().map(|(k, v)| (k, v)));
 
         // Stdin: first command may have < redirect, others get previous pipe

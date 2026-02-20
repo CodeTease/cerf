@@ -7,28 +7,31 @@ use nom::{
     Parser,
 };
 
-use super::ast::{Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
+use super::ast::{Arg, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
 
 // ── Low-level nom parsers ──────────────────────────────────────────────────
 
+/// A raw parsed segment: the text content and whether it came from quotes.
+type Segment = (String, bool);
+
 /// Parse a double-quoted string: `"…"` — returns the content without quotes.
-fn parse_double_quoted(input: &str) -> IResult<&str, String> {
+fn parse_double_quoted(input: &str) -> IResult<&str, Segment> {
     let (input, content) = delimited(char('"'), is_not("\""), char('"')).parse(input)?;
-    Ok((input, content.to_string()))
+    Ok((input, (content.to_string(), true)))
 }
 
 /// Parse a single-quoted string: `'…'` — returns the content without quotes.
 /// Single quotes suppress ALL special characters (POSIX behaviour).
-fn parse_single_quoted(input: &str) -> IResult<&str, String> {
+fn parse_single_quoted(input: &str) -> IResult<&str, Segment> {
     let (input, content) = delimited(char('\''), is_not("'"), char('\'')).parse(input)?;
-    Ok((input, content.to_string()))
+    Ok((input, (content.to_string(), true)))
 }
 
 /// Parse an unquoted run of ordinary characters.
 /// Stops at whitespace, quotes (`"` or `'`), and shell meta-characters.
-fn parse_unquoted(input: &str) -> IResult<&str, String> {
-    let (input, content) = is_not(" \t\r\n\"';&|><")(input)?;
-    Ok((input, content.to_string()))
+fn parse_unquoted(input: &str) -> IResult<&str, Segment> {
+    let (input, content) = is_not(" \t\r\n\"';& |><")(input)?;
+    Ok((input, (content.to_string(), false)))
 }
 
 /// Parse one "word" (shell argument/token).
@@ -40,7 +43,10 @@ fn parse_unquoted(input: &str) -> IResult<&str, String> {
 ///
 /// Adjacent segments are concatenated, so `foo'bar baz'"qux"` → `foobar bazqux`.
 /// This matches POSIX sh tokenisation.
-pub fn parse_arg(input: &str) -> IResult<&str, String> {
+///
+/// Returns `Arg { value, quoted }` where `quoted` is `true` only when the
+/// **entire** word consists of a single quoted segment (e.g. `"hello"`).
+pub fn parse_arg(input: &str) -> IResult<&str, Arg> {
     // We need at least one segment.
     let (mut rest, first) = alt((
         parse_double_quoted,
@@ -49,20 +55,35 @@ pub fn parse_arg(input: &str) -> IResult<&str, String> {
     ))
     .parse(input)?;
 
-    let mut word = first;
+    let mut value = first.0;
+    let mut segment_count = 1u32;
+    let first_quoted = first.1;
 
     // Greedily consume further adjacent segments (no whitespace between them).
     loop {
         match alt((parse_double_quoted, parse_single_quoted, parse_unquoted)).parse(rest) {
             Ok((after, segment)) => {
-                word.push_str(&segment);
+                value.push_str(&segment.0);
+                segment_count += 1;
+                // If any later segment differs in quote-state, it's mixed.
                 rest = after;
             }
             Err(_) => break,
         }
     }
 
-    Ok((rest, word))
+    // The word is considered "fully quoted" only when it is exactly one
+    // quoted segment (e.g., `"*.txt"` or `'*.txt'`).
+    let quoted = segment_count == 1 && first_quoted;
+
+    Ok((rest, Arg { value, quoted }))
+}
+
+/// Parse one "word" as a plain `String` (used for redirect targets and
+/// assignment values where quoting metadata is irrelevant).
+pub fn parse_word(input: &str) -> IResult<&str, String> {
+    let (rest, arg) = parse_arg(input)?;
+    Ok((rest, arg.value))
 }
 
 // ── Redirect parsing ──────────────────────────────────────────────────────
@@ -77,7 +98,7 @@ fn parse_redirect(input: &str) -> IResult<&str, Redirect> {
     ))
     .parse(input)?;
     let (input, _) = multispace0(input)?;
-    let (input, file) = parse_arg(input)?;
+    let (input, file) = parse_word(input)?;
     Ok((input, Redirect { kind, file }))
 }
 
@@ -85,17 +106,12 @@ fn parse_redirect(input: &str) -> IResult<&str, Redirect> {
 
 /// Parse a shell assignment: `VAR=VALUE`.
 fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
-    // POSIX says variable names must be alphanumeric/underscore and start with
-    // a non-digit. For simplicity, we'll just take anything up to '=' that's
-    // not a meta-character.
-    let (input, name) = is_not(" \t\r\n\"';&|=><")(input)?;
+    let (input, name) = is_not(" \t\r\n\"';& |=><")(input)?;
     if name.is_empty() {
         return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
     }
     let (input, _) = char('=')(input)?;
-    // The value can be any "word" (supporting quotes).
-    // If the next char is whitespace or end of input, value is empty string.
-    let (input, value) = match parse_arg(input) {
+    let (input, value) = match parse_word(input) {
         Ok((rest, val)) => (rest, val),
         Err(_) => (input, String::new()),
     };
@@ -122,7 +138,7 @@ pub fn parse_single_command(input: &str) -> IResult<&str, ParsedCommand> {
 
     // Parse the command name (optional if assignments are present).
     let (after_name, name) = match parse_arg(rest) {
-        Ok((after, n)) => (after, Some(n)),
+        Ok((after, n)) => (after, Some(n.value)),
         Err(e) => {
             if assignments.is_empty() {
                 return Err(e);
@@ -133,7 +149,7 @@ pub fn parse_single_command(input: &str) -> IResult<&str, ParsedCommand> {
     };
     rest = after_name;
 
-    let mut args: Vec<String> = Vec::new();
+    let mut args: Vec<Arg> = Vec::new();
     let mut redirects: Vec<Redirect> = Vec::new();
 
     // Parse arguments and redirects interleaved, until we hit a connector or
