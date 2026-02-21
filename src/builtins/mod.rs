@@ -9,3 +9,4 @@ pub mod source;
 pub mod history;
 pub mod unset;
 pub mod dirs;
+pub mod read;

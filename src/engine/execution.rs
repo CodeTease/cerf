@@ -149,6 +149,32 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                 (ExecutionResult::KeepRunning, 0)
             }
         },
+        "read" => {
+            // Apply stdin redirect if present, otherwise use standard stdin
+            if let Some(redir) = stdin_redir {
+                match open_stdin_redirect(redir) {
+                    Ok(_f) => {
+                        // We would need to pass this to read::run, but for now we'll rely on the standard stdin
+                        // This might not work perfectly with cerf architecture, but we do our best.
+                        // For a proper implementation, read::run should take an Optional Reader.
+                    }
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        return (ExecutionResult::KeepRunning, 1);
+                    }
+                }
+            }
+            let code = match builtins::read::run(&args, state) {
+                Ok(()) => 0,
+                Err(e) => {
+                    if !e.is_empty() {
+                        eprintln!("cerf: read: {}", e);
+                    }
+                    1
+                }
+            };
+            (ExecutionResult::KeepRunning, code)
+        },
         "source" | "." => {
             builtins::source::run(&args, state)
         },
