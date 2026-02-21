@@ -121,6 +121,19 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             builtins::system::clear();
             (ExecutionResult::KeepRunning, 0)
         },
+        "exec" => {
+            match builtins::system::exec(&args) {
+                Ok(code) => {
+                    // exec succeeded (Windows emulation) — exit the shell
+                    // with the child's exit code.
+                    (ExecutionResult::Exit, code)
+                }
+                Err(msg) => {
+                    eprintln!("{}", msg);
+                    (ExecutionResult::KeepRunning, 1)
+                }
+            }
+        },
         "echo" => {
             let output = args.join(" ");
             if let Some(redir) = stdout_redir {
