@@ -1,3 +1,6 @@
+# Pavidi config file
+# Pavidi is also a CodeTease project
+
 [project]
 name = "cerf"
 version = "0.1.0"
