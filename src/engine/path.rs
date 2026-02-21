@@ -8,11 +8,26 @@ pub fn normalize_path(path: &Path) -> PathBuf {
         match component {
             Component::CurDir => {},
             Component::ParentDir => {
-                normalized.pop();
+                match normalized.components().next_back() {
+                    Some(Component::Normal(_)) => {
+                        normalized.pop();
+                    }
+                    Some(Component::RootDir) | Some(Component::Prefix(_)) => {
+                        // At root, .. does nothing
+                    }
+                    _ => {
+                        normalized.push(Component::ParentDir);
+                    }
+                }
             }
             _ => normalized.push(component),
         }
     }
+
+    if normalized.as_os_str().is_empty() {
+        normalized.push(Component::CurDir);
+    }
+
     normalized
 }
 
