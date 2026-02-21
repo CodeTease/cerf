@@ -62,52 +62,30 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
             break;
         }
         
-        let wait_res = waitpid(Pid::from_raw(- (pgid as i32)), Some(WaitPidFlag::WUNTRACED));
+        let wait_res = waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WUNTRACED));
         match wait_res {
             Ok(WaitStatus::Exited(pid, code)) => {
-                if let Some(job) = state.jobs.get_mut(&job_id) {
-                    for p in &mut job.processes {
-                        if p.pid == pid.as_raw() as u32 {
-                            p.state = JobState::Done(code);
-                            last_code = code;
-                        }
-                    }
-                }
+                update_pid_state(state, pid.as_raw() as u32, JobState::Done(code));
             },
             Ok(WaitStatus::Signaled(pid, sig, _)) => {
                 let code = 128 + sig as i32;
-                if let Some(job) = state.jobs.get_mut(&job_id) {
-                    for p in &mut job.processes {
-                        if p.pid == pid.as_raw() as u32 {
-                            p.state = JobState::Done(code);
-                            last_code = code;
+                update_pid_state(state, pid.as_raw() as u32, JobState::Done(code));
+                if fg {
+                    if let Some(job) = state.jobs.get(&job_id) {
+                        if job.processes.iter().any(|p| p.pid == pid.as_raw() as u32) {
+                            println!("\n[{}] Terminated  {}", job_id, sig);
                         }
                     }
-                }
-                if fg {
-                    println!("\n[{}] Terminated  {}", job_id, sig);
                 }
             },
             Ok(WaitStatus::Stopped(pid, _sig)) => {
-                if let Some(job) = state.jobs.get_mut(&job_id) {
-                    for p in &mut job.processes {
-                        if p.pid == pid.as_raw() as u32 {
-                            p.state = JobState::Stopped;
-                        }
-                    }
-                }
+                update_pid_state(state, pid.as_raw() as u32, JobState::Stopped);
             },
             Ok(WaitStatus::Continued(pid)) => {
-                if let Some(job) = state.jobs.get_mut(&job_id) {
-                    for p in &mut job.processes {
-                        if p.pid == pid.as_raw() as u32 {
-                            p.state = JobState::Running;
-                        }
-                    }
-                }
+                update_pid_state(state, pid.as_raw() as u32, JobState::Running);
             },
             Err(nix::errno::Errno::ECHILD) => {
-                // No more children? Mark all running as done (we lost track?)
+                // No more children at all
                 if let Some(job) = state.jobs.get_mut(&job_id) {
                     for p in &mut job.processes {
                         if p.state == JobState::Running {
