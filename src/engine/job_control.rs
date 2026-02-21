@@ -1,4 +1,4 @@
-use crate::engine::state::{ShellState, JobState, Job, ProcessInfo};
+use crate::engine::state::{ShellState, JobState};
 
 #[cfg(unix)]
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
@@ -9,7 +9,7 @@ use nix::unistd::Pid;
 #[cfg(unix)]
 pub fn restore_terminal(state: &ShellState) {
     if let (Some(term), Some(shell_pgid)) = (state.shell_term, state.shell_pgid) {
-        let _ = nix::unistd::tcsetpgrp(term, shell_pgid);
+        let _ = nix::unistd::tcsetpgrp(unsafe { std::os::fd::BorrowedFd::borrow_raw(term) }, shell_pgid);
     }
 }
 
@@ -26,7 +26,7 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
         if let Some(job) = state.jobs.get(&job_id) {
             let pgid = Pid::from_raw(job.pgid as i32);
             if let Some(term) = state.shell_term {
-                let _ = nix::unistd::tcsetpgrp(term, pgid);
+                let _ = nix::unistd::tcsetpgrp(unsafe { std::os::fd::BorrowedFd::borrow_raw(term) }, pgid);
             }
         } else {
             return 0; // Job not found

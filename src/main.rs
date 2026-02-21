@@ -39,7 +39,7 @@ fn main() -> rustyline::Result<()> {
     {
         let pid = nix::unistd::getpid();
         let _ = nix::unistd::setpgid(pid, pid);
-        let _ = nix::unistd::tcsetpgrp(nix::libc::STDIN_FILENO, pid);
+        let _ = nix::unistd::tcsetpgrp(unsafe { std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDIN_FILENO) }, pid);
     }
     
     let mut state = ShellState::new();

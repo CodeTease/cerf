@@ -9,12 +9,11 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         }
         0
     } else {
-        let mut job_id = None;
-        if let Some(id_str) = args[0].strip_prefix('%') {
-            job_id = id_str.parse().ok();
+        let job_id = if let Some(id_str) = args[0].strip_prefix('%') {
+            id_str.parse().ok()
         } else {
-            job_id = args[0].parse().ok();
-        }
+            args[0].parse().ok()
+        };
         
         if let Some(id) = job_id {
             if state.jobs.contains_key(&id) {

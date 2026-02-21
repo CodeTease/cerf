@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
-use crate::parser::{CommandEntry, Connector, ParsedCommand, Pipeline};
+use crate::parser::{CommandEntry, Connector, Pipeline};
 use crate::builtins;
 #[cfg(unix)]
 use crate::signals;
@@ -301,11 +301,11 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             let result = command.spawn();
 
             let code = match result {
-                Ok(mut child) => {
+                Ok(child) => {
                     let pid = child.id();
                     
                     #[cfg(unix)]
-                    if let Some(shell_pgid) = state.shell_pgid {
+                    if state.shell_pgid.is_some() {
                         let _ = nix::unistd::setpgid(
                             nix::unistd::Pid::from_raw(pid as i32), 
                             nix::unistd::Pid::from_raw(pid as i32)
@@ -494,7 +494,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 }
                 
                 #[cfg(unix)]
-                if let Some(shell_pgid) = state.shell_pgid {
+                if state.shell_pgid.is_some() {
                     let _ = nix::unistd::setpgid(
                         nix::unistd::Pid::from_raw(pid as i32), 
                         nix::unistd::Pid::from_raw(first_pgid as i32)

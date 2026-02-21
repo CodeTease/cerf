@@ -243,8 +243,8 @@ fn is_readable(path: &Path) -> bool {
     use std::os::unix::fs::MetadataExt;
     if let Ok(meta) = fs::metadata(path) {
         let mode = meta.mode();
-        let uid = unsafe { libc::getuid() };
-        let gid = unsafe { libc::getgid() };
+        let uid = unsafe { nix::libc::getuid() };
+        let gid = unsafe { nix::libc::getgid() };
         if uid == 0 {
             return true; // root can read everything
         }
@@ -265,8 +265,8 @@ fn is_writable(path: &Path) -> bool {
     use std::os::unix::fs::MetadataExt;
     if let Ok(meta) = fs::metadata(path) {
         let mode = meta.mode();
-        let uid = unsafe { libc::getuid() };
-        let gid = unsafe { libc::getgid() };
+        let uid = unsafe { nix::libc::getuid() };
+        let gid = unsafe { nix::libc::getgid() };
         if uid == 0 {
             return true;
         }
@@ -287,8 +287,8 @@ fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::MetadataExt;
     if let Ok(meta) = fs::metadata(path) {
         let mode = meta.mode();
-        let uid = unsafe { libc::getuid() };
-        let gid = unsafe { libc::getgid() };
+        let uid = unsafe { nix::libc::getuid() };
+        let gid = unsafe { nix::libc::getgid() };
         if uid == 0 {
             return mode & 0o111 != 0;
         }

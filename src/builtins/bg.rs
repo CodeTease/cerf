@@ -3,7 +3,7 @@ use crate::engine::ShellState;
 pub fn run(args: &[String], state: &mut ShellState) -> i32 {
     let mut job_id = None;
     if args.is_empty() {
-        if let Some((&id, _)) = state.jobs.iter().max_by_key(|(&id, _)| *id) {
+        if let Some(&id) = state.jobs.keys().max() {
             job_id = Some(id);
         }
     } else {
@@ -19,8 +19,8 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             println!("[{}] {}", id, job.command);
             job.reported_done = false;
             for p in &mut job.processes {
-                if p.state == crate::engine::state::JobState::Stopped {
-                    p.state = crate::engine::state::JobState::Running;
+                if p.state == crate::engine::JobState::Stopped {
+                    p.state = crate::engine::JobState::Running;
                 }
             }
             

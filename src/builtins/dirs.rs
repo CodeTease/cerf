@@ -10,7 +10,7 @@ pub fn pushd(args: &[String], state: &mut ShellState, stdout_redirect: Option<st
             return Err("pushd: no other directory".to_string());
         }
 
-        let mut top = state.dir_stack.pop().unwrap();
+        let top = state.dir_stack.pop().unwrap();
         
         if let Err(_) = env::set_current_dir(&top) {
             state.dir_stack.push(top.clone());

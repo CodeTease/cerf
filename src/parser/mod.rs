@@ -4,7 +4,7 @@ mod expand;
 
 // Re-export the public surface so that `crate::parser::*` keeps working
 // for all existing callers (engine.rs, main.rs, etc.).
-pub use ast::{Arg, arg_values, CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
+pub use ast::{Arg, CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
 pub use expand::expand_vars;
 
 use combinators::{parse_connector, parse_pipeline_expr};
@@ -29,7 +29,7 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, S
     let mut rest = s;
 
     // Parse the first pipeline (no leading connector).
-    let (after_first, mut first_pipeline) = match parse_pipeline_expr(rest) {
+    let (after_first, first_pipeline) = match parse_pipeline_expr(rest) {
         Ok(v) => v,
         Err(_) => return None,
     };
