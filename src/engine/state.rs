@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -9,6 +9,8 @@ pub struct ShellState {
     pub aliases: HashMap<String, String>,
     /// All currently-defined shell variables.
     pub variables: HashMap<String, String>,
+    /// Shell options enabled via `set -o` / `set -e` etc.
+    pub set_options: HashSet<String>,
     /// Command history (persisted to `~/.cerf_history`).
     pub history: Vec<String>,
 }
@@ -22,6 +24,7 @@ impl ShellState {
             dir_stack: Vec::new(),
             aliases: HashMap::new(),
             variables,
+            set_options: HashSet::new(),
             history: Vec::new(),
         };
         state.load_history();

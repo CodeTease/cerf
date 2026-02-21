@@ -12,3 +12,4 @@ pub mod dirs;
 pub mod read;
 pub mod boolean;
 pub mod test_cmd;
+pub mod set;
