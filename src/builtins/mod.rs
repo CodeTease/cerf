@@ -10,3 +10,4 @@ pub mod history;
 pub mod unset;
 pub mod dirs;
 pub mod read;
+pub mod boolean;

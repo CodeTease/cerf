@@ -134,6 +134,12 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
                 }
             }
         },
+        "true" => {
+            (ExecutionResult::KeepRunning, builtins::boolean::run_true())
+        },
+        "false" => {
+            (ExecutionResult::KeepRunning, builtins::boolean::run_false())
+        },
         "echo" => {
             let output = args.join(" ");
             if let Some(redir) = stdout_redir {
