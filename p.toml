@@ -27,5 +27,5 @@ deps = ["build"]
 
 [runner.ci]
 cmds = ["echo 'Finished'"]
-deps = ["lint", "format", "test", "build"]
+deps = ["lint", "format", "test"]
 parallel = true
