@@ -29,28 +29,61 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, S
     let mut rest = s;
 
     // Parse the first pipeline (no leading connector).
-    let (after_first, first_pipeline) = match parse_pipeline_expr(rest) {
+    let (after_first, mut first_pipeline) = match parse_pipeline_expr(rest) {
         Ok(v) => v,
         Err(_) => return None,
     };
-    entries.push(CommandEntry { connector: None, pipeline: first_pipeline });
     rest = after_first;
 
-    // Parse (connector, pipeline) pairs until input is exhausted.
+    let mut current_pipeline = first_pipeline;
+    let mut current_connector = None;
+
     loop {
+        // Look for trailing & or connector for current pipeline
         if rest.trim().is_empty() {
+            entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
             break;
         }
+
         let (after_conn, conn) = match parse_connector(rest) {
             Ok(v) => v,
-            Err(_) => break,
+            Err(_) => {
+                entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
+                break;
+            }
         };
-        let (after_pipeline, pipeline) = match parse_pipeline_expr(after_conn) {
+
+        if conn == Connector::Amp {
+            current_pipeline.background = true;
+            entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
+            rest = after_conn;
+            
+            if rest.trim().is_empty() {
+                break;
+            }
+            
+            // Following a background command, the next sequence starts without a dependency connector,
+            // (or rather, its dependency is satisfied by previous immediately).
+            let (after_next, next_pipe) = match parse_pipeline_expr(rest) {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            current_pipeline = next_pipe;
+            current_connector = None;
+            rest = after_next;
+            continue;
+        }
+
+        // Output current pipeline and move to next
+        entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
+        
+        let (after_next, next_pipe) = match parse_pipeline_expr(after_conn) {
             Ok(v) => v,
             Err(_) => break,
         };
-        entries.push(CommandEntry { connector: Some(conn), pipeline });
-        rest = after_pipeline;
+        current_pipeline = next_pipe;
+        current_connector = Some(conn);
+        rest = after_next;
     }
 
     if entries.is_empty() { None } else { Some(entries) }

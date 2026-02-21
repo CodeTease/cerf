@@ -55,6 +55,7 @@ pub struct Redirect {
 pub struct Pipeline {
     pub commands: Vec<ParsedCommand>, // length ≥ 1
     pub negated: bool,
+    pub background: bool,
 }
 
 /// How consecutive commands are joined.
@@ -66,6 +67,8 @@ pub enum Connector {
     And,
     /// `||` — run next only if previous failed  (exit code ≠ 0)
     Or,
+    /// `&` — run previous command in the background
+    Amp,
 }
 
 /// A single entry in a command list:

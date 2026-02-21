@@ -217,7 +217,7 @@ pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
         }
     }
 
-    Ok((rest, Pipeline { commands, negated }))
+    Ok((rest, Pipeline { commands, negated, background: false }))
 }
 
 // ── Connector parsing ─────────────────────────────────────────────────────
@@ -230,6 +230,7 @@ pub fn parse_connector(input: &str) -> IResult<&str, Connector> {
         nom::combinator::map(nom::bytes::complete::tag("&&"), |_| Connector::And),
         nom::combinator::map(nom::bytes::complete::tag("||"), |_| Connector::Or),
         nom::combinator::map(char(';'), |_| Connector::Semi),
+        nom::combinator::map(char('&'), |_| Connector::Amp),
     ))
     .parse(input)
 }

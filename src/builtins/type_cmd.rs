@@ -8,7 +8,9 @@ pub fn type_of(cmd: &str, aliases: &HashMap<String, String>) -> String {
     }
 
     // 2. Shell builtins.
-    let builtins = ["alias", "unalias", "cd", "pwd", "exit", "clear", "echo", "type", "export", "unset", "source", ".", "history", "pushd", "popd", "dirs", "exec", "read", "true", "false", "test", "[", "set"];
+    let builtins = ["alias", "unalias", "cd", "pwd", "exit", "clear", "echo", "type", "export", 
+                    "unset", "source", ".", "history", "pushd", "popd", "dirs", "exec", "read", 
+                    "true", "false", "test", "[", "set", "kill", "jobs", "fg", "bg", "wait"];
     if builtins.contains(&cmd) {
         return format!("{} is a shell builtin", cmd);
     }

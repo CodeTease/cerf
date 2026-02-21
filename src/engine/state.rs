@@ -2,6 +2,64 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum JobState {
+    Running,
+    Stopped,
+    Done(i32),
+}
+
+impl std::fmt::Display for JobState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JobState::Running => write!(f, "Running"),
+            JobState::Stopped => write!(f, "Stopped"),
+            JobState::Done(code) => write!(f, "Done({})", code),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub state: JobState,
+}
+
+#[derive(Debug, Clone)]
+pub struct Job {
+    pub id: usize,
+    pub pgid: u32,
+    pub command: String,
+    pub processes: Vec<ProcessInfo>,
+    pub reported_done: bool,
+}
+
+impl Job {
+    pub fn is_stopped(&self) -> bool {
+        self.processes.iter().all(|p| matches!(p.state, JobState::Stopped | JobState::Done(_)))
+    }
+    
+    pub fn is_done(&self) -> bool {
+        self.processes.iter().all(|p| matches!(p.state, JobState::Done(_)))
+    }
+
+    pub fn state(&self) -> JobState {
+        if self.is_done() {
+            // Find last process exit code
+            let code = self.processes.last().map(|p| match p.state {
+                JobState::Done(c) => c,
+                _ => 0,
+            }).unwrap_or(0);
+            JobState::Done(code)
+        } else if self.is_stopped() {
+            JobState::Stopped
+        } else {
+            JobState::Running
+        }
+    }
+}
+
 pub struct ShellState {
     pub previous_dir: Option<PathBuf>,
     pub dir_stack: Vec<PathBuf>,
@@ -13,6 +71,14 @@ pub struct ShellState {
     pub set_options: HashSet<String>,
     /// Command history (persisted to `~/.cerf_history`).
     pub history: Vec<String>,
+    
+    // Job control
+    pub jobs: HashMap<usize, Job>,
+    pub next_job_id: usize,
+    #[cfg(unix)]
+    pub shell_pgid: Option<nix::unistd::Pid>,
+    #[cfg(unix)]
+    pub shell_term: Option<std::os::fd::RawFd>,
 }
 
 impl ShellState {
@@ -26,6 +92,12 @@ impl ShellState {
             variables,
             set_options: HashSet::new(),
             history: Vec::new(),
+            jobs: HashMap::new(),
+            next_job_id: 1,
+            #[cfg(unix)]
+            shell_pgid: None,
+            #[cfg(unix)]
+            shell_term: Some(nix::libc::STDIN_FILENO),
         };
         state.load_history();
         state

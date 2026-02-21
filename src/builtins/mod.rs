@@ -13,3 +13,8 @@ pub mod read;
 pub mod boolean;
 pub mod test_cmd;
 pub mod set;
+pub mod jobs;
+pub mod fg;
+pub mod bg;
+pub mod wait;
+pub mod kill_cmd;

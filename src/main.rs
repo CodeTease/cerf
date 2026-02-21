@@ -33,6 +33,15 @@ fn get_prompt() -> String {
 
 fn main() -> rustyline::Result<()> {
     signals::init();
+    
+    // Initialize job control 
+    #[cfg(unix)]
+    {
+        let pid = nix::unistd::getpid();
+        let _ = nix::unistd::setpgid(pid, pid);
+        let _ = nix::unistd::tcsetpgrp(nix::libc::STDIN_FILENO, pid);
+    }
+    
     let mut state = ShellState::new();
 
     let args: Vec<String> = env::args().collect();
@@ -50,6 +59,14 @@ fn main() -> rustyline::Result<()> {
     let mut rl = DefaultEditor::new()?;
 
     loop {
+        // Poll for any background jobs that have finished
+        #[cfg(unix)]
+        engine::job_control::update_jobs(&mut state);
+        
+        // Ensure shell owns the terminal
+        #[cfg(unix)]
+        engine::job_control::restore_terminal(&state);
+
         let prompt = get_prompt();
         let readline = rl.readline(&prompt);
         match readline {

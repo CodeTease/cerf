@@ -4,6 +4,7 @@ mod alias;
 pub mod path;
 mod execution;
 mod glob;
+pub mod job_control;
 
 // Re-export the public API so that external code (`main.rs`, `builtins/`)
 // can continue to use `engine::ShellState`, `engine::ExecutionResult`, etc.

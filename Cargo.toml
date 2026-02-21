@@ -10,4 +10,4 @@ nom = "8.0.0"
 rustyline = "17.0.2"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.1", features = ["signal"] }
+nix = { version = "0.31.1", features = ["signal", "process", "term"] }

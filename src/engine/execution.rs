@@ -19,7 +19,8 @@ use super::glob::expand_globs;
 
 /// Execute one simple command with optional redirections.
 /// Returns `(ExecutionResult, exit_code)`.
-fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResult, i32) {
+fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult, i32) {
+    let cmd = &pipeline.commands[0];
     let (stdin_redir, stdout_redir) = resolve_redirects(&cmd.redirects);
 
     if cmd.name.is_none() {
@@ -71,6 +72,26 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
         },
         "set" => {
             let code = builtins::set::run(&args, state);
+            (ExecutionResult::KeepRunning, code)
+        },
+        "jobs" => {
+            let code = builtins::jobs::run(state);
+            (ExecutionResult::KeepRunning, code)
+        },
+        "fg" => {
+            let code = builtins::fg::run(&args, state);
+            (ExecutionResult::KeepRunning, code)
+        },
+        "bg" => {
+            let code = builtins::bg::run(&args, state);
+            (ExecutionResult::KeepRunning, code)
+        },
+        "wait" => {
+            let code = builtins::wait::run(&args, state);
+            (ExecutionResult::KeepRunning, code)
+        },
+        "kill" => {
+            let code = builtins::kill_cmd::run(&args, state);
             (ExecutionResult::KeepRunning, code)
         },
         "cd" => {
@@ -268,6 +289,8 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             let result = unsafe {
                 command
                     .pre_exec(|| {
+                        let pid = nix::unistd::getpid();
+                        let _ = nix::unistd::setpgid(pid, pid);
                         signals::restore_default();
                         Ok(())
                     })
@@ -279,9 +302,37 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
 
             let code = match result {
                 Ok(mut child) => {
-                    child.wait()
-                        .map(|s| s.code().unwrap_or(1))
-                        .unwrap_or(1)
+                    let pid = child.id();
+                    
+                    #[cfg(unix)]
+                    if let Some(shell_pgid) = state.shell_pgid {
+                        let _ = nix::unistd::setpgid(
+                            nix::unistd::Pid::from_raw(pid as i32), 
+                            nix::unistd::Pid::from_raw(pid as i32)
+                        );
+                    }
+
+                    let job = crate::engine::state::Job {
+                        id: state.next_job_id,
+                        pgid: pid,
+                        command: crate::engine::job_control::format_command(pipeline),
+                        processes: vec![crate::engine::state::ProcessInfo {
+                            pid,
+                            name: name.to_string(),
+                            state: crate::engine::state::JobState::Running,
+                        }],
+                        reported_done: false,
+                    };
+                    let job_id = state.next_job_id;
+                    state.jobs.insert(job_id, job);
+                    state.next_job_id += 1;
+                    
+                    if pipeline.background {
+                        println!("[{}] {}", job_id, pid);
+                        0
+                    } else {
+                        crate::engine::job_control::wait_for_job(job_id, state, true)
+                    }
                 }
                 Err(e) => {
                     if e.kind() == std::io::ErrorKind::NotFound {
@@ -314,7 +365,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
     // Single-command pipeline — just run the command directly (supports builtins).
     if cmds.len() == 1 {
-        let (res, code) = execute_simple(&cmds[0], state);
+        let (res, code) = execute_simple(&pipeline, state);
         let final_code = if pipeline.negated {
             if code == 0 { 1 } else { 0 }
         } else {
@@ -329,6 +380,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     let last_idx = cmds.len() - 1;
     let mut children: Vec<std::process::Child> = Vec::with_capacity(cmds.len());
     let mut prev_stdout: Option<std::process::ChildStdout> = None;
+
+    let mut first_pgid = 0;
+    let mut processes = Vec::new();
 
     for (i, cmd) in cmds.iter().enumerate() {
         let name = match cmd.name.as_ref() {
@@ -414,9 +468,15 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         }
 
         #[cfg(unix)]
+        let target_pgid = first_pgid;
+        
+        #[cfg(unix)]
         let result = unsafe {
             command
-                .pre_exec(|| {
+                .pre_exec(move || {
+                    let pid = nix::unistd::getpid();
+                    let pgid = if target_pgid == 0 { pid } else { nix::unistd::Pid::from_raw(target_pgid as i32) };
+                    let _ = nix::unistd::setpgid(pid, pgid);
                     signals::restore_default();
                     Ok(())
                 })
@@ -428,6 +488,25 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
         match result {
             Ok(mut child) => {
+                let pid = child.id();
+                if i == 0 {
+                    first_pgid = pid;
+                }
+                
+                #[cfg(unix)]
+                if let Some(shell_pgid) = state.shell_pgid {
+                    let _ = nix::unistd::setpgid(
+                        nix::unistd::Pid::from_raw(pid as i32), 
+                        nix::unistd::Pid::from_raw(first_pgid as i32)
+                    );
+                }
+
+                processes.push(crate::engine::state::ProcessInfo {
+                    pid,
+                    name: name.to_string(),
+                    state: crate::engine::state::JobState::Running,
+                });
+                
                 if i != last_idx {
                     prev_stdout = child.stdout.take();
                 }
@@ -448,14 +527,23 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         }
     }
 
-    // Wait for all children; use the last command's exit code.
-    let mut last_code = 0;
-    for (i, mut child) in children.into_iter().enumerate() {
-        let code = child.wait().map(|s| s.code().unwrap_or(1)).unwrap_or(1);
-        if i == last_idx {
-            last_code = code;
-        }
-    }
+    let job = crate::engine::state::Job {
+        id: state.next_job_id,
+        pgid: first_pgid,
+        command: crate::engine::job_control::format_command(&pipeline),
+        processes,
+        reported_done: false,
+    };
+    let job_id = state.next_job_id;
+    state.jobs.insert(job_id, job);
+    state.next_job_id += 1;
+
+    let last_code = if pipeline.background {
+        println!("[{}] {}", job_id, first_pgid);
+        0
+    } else {
+        crate::engine::job_control::wait_for_job(job_id, state, true)
+    };
 
     let final_code = if pipeline.negated {
         if last_code == 0 { 1 } else { 0 }
@@ -487,6 +575,7 @@ pub fn execute_list(entries: Vec<CommandEntry>, state: &mut ShellState) -> Execu
             Some(Connector::Semi)   => false,              // ;  → always run
             Some(Connector::And)    => last_code != 0,     // && → skip on failure
             Some(Connector::Or)     => last_code == 0,     // || → skip on success
+            Some(Connector::Amp)    => false,              // &  → always run
         };
 
         if skip {
