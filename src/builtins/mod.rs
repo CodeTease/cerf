@@ -11,3 +11,4 @@ pub mod unset;
 pub mod dirs;
 pub mod read;
 pub mod boolean;
+pub mod test_cmd;
