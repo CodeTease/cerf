@@ -26,6 +26,6 @@ cmds = ["cargo test"]
 deps = ["build"]
 
 [runner.ci]
-cmds = ["echo 'Finished'"]
-deps = ["lint", "format", "test"]
+cmds = ["cargo test"] # It's better to run test after lint and format
+deps = ["lint", "format"]
 parallel = true
