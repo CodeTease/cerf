@@ -1,0 +1,31 @@
+[project]
+name = "cerf"
+version = "0.1.0"
+authors = ["CodeTease"]
+description = "A simple shell written in Rust"
+log_strategy = "always"
+log_plain = true
+
+[runner]
+lint = "cargo clippy"
+format = "cargo fmt"
+run = "cargo run"
+
+[runner.build]
+cmds = ["cargo build"]
+sources = ["src/**/*.rs", "Cargo.toml", "Cargo.lock"]
+outputs = ["target/debug/cerf"]
+
+[runner.buildr]
+cmds = ["cargo build --release"]
+sources = ["src/**/*.rs", "Cargo.toml", "Cargo.lock"]
+outputs = ["target/release/cerf"]
+
+[runner.test]
+cmds = ["cargo test"]
+deps = ["build"]
+
+[runner.ci]
+cmds = ["echo 'Finished'"]
+deps = ["lint", "format", "test", "build"]
+parallel = true
