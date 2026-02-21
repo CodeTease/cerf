@@ -26,7 +26,11 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             }
             #[cfg(windows)]
             {
-                0
+                let pids: Vec<u32> = state.jobs[&id].processes.iter().map(|p| p.pid).collect();
+                for pid in pids {
+                    crate::builtins::kill_cmd::suspend_or_resume_process_win(pid, false);
+                }
+                return crate::engine::job_control::wait_for_job(id, state, true);
             }
         } else {
             eprintln!("cerf: fg: %{}: no such job", id);

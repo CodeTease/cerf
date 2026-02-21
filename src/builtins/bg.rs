@@ -30,6 +30,14 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                 let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(-(pgid as i32)), nix::sys::signal::Signal::SIGCONT);
             }
             
+            #[cfg(windows)]
+            {
+                let pids: Vec<u32> = job.processes.iter().map(|p| p.pid).collect();
+                for pid in pids {
+                    crate::builtins::kill_cmd::suspend_or_resume_process_win(pid, false);
+                }
+            }
+            
             0
         } else {
             eprintln!("cerf: bg: %{}: no such job", id);

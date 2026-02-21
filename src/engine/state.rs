@@ -30,6 +30,8 @@ pub struct ProcessInfo {
 pub struct Job {
     pub id: usize,
     pub pgid: u32,
+    #[cfg(windows)]
+    pub job_handle: isize,
     pub command: String,
     pub processes: Vec<ProcessInfo>,
     pub reported_done: bool,
@@ -81,6 +83,8 @@ pub struct ShellState {
     pub shell_pgid: Option<nix::unistd::Pid>,
     #[cfg(unix)]
     pub shell_term: Option<std::os::fd::RawFd>,
+    #[cfg(windows)]
+    pub iocp_handle: isize,
 }
 
 impl ShellState {
@@ -100,6 +104,15 @@ impl ShellState {
             shell_pgid: None,
             #[cfg(unix)]
             shell_term: Some(nix::libc::STDIN_FILENO),
+            #[cfg(windows)]
+            iocp_handle: unsafe {
+                windows_sys::Win32::System::IO::CreateIoCompletionPort(
+                    windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE,
+                    std::ptr::null_mut(),
+                    0,
+                    1,
+                ) as isize
+            },
         };
         state.load_history();
         state

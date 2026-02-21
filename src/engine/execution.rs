@@ -323,9 +323,38 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                         );
                     }
 
+                    #[cfg(windows)]
+                    let job_handle = unsafe {
+                        let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(
+                            std::ptr::null(), 
+                            std::ptr::null()
+                        );
+                        let mut limit_info: windows_sys::Win32::System::JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                        limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                        windows_sys::Win32::System::JobObjects::SetInformationJobObject(
+                            handle,
+                            windows_sys::Win32::System::JobObjects::JobObjectExtendedLimitInformation,
+                            &limit_info as *const _ as *const std::ffi::c_void,
+                            std::mem::size_of_val(&limit_info) as u32,
+                        );
+                        windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(
+                            handle,
+                            std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _
+                        );
+                        windows_sys::Win32::System::IO::CreateIoCompletionPort(
+                            handle,
+                            state.iocp_handle as _,
+                            state.next_job_id as _,
+                            0
+                        );
+                        handle as isize
+                    };
+
                     let job = crate::engine::state::Job {
                         id: state.next_job_id,
                         pgid: pid,
+                        #[cfg(windows)]
+                        job_handle,
                         command: crate::engine::job_control::format_command(pipeline),
                         processes: vec![crate::engine::state::ProcessInfo {
                             pid,
@@ -408,6 +437,29 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
     let mut first_pgid = 0;
     let mut processes = Vec::new();
+
+    #[cfg(windows)]
+    let job_handle = unsafe {
+        let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(
+            std::ptr::null(), 
+            std::ptr::null()
+        );
+        let mut limit_info: windows_sys::Win32::System::JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        windows_sys::Win32::System::JobObjects::SetInformationJobObject(
+            handle,
+            windows_sys::Win32::System::JobObjects::JobObjectExtendedLimitInformation,
+            &limit_info as *const _ as *const std::ffi::c_void,
+            std::mem::size_of_val(&limit_info) as u32,
+        );
+        windows_sys::Win32::System::IO::CreateIoCompletionPort(
+            handle,
+            state.iocp_handle as _,
+            state.next_job_id as _,
+            0
+        );
+        handle as isize
+    };
 
     for (i, cmd) in cmds.iter().enumerate() {
         let name = match cmd.name.as_ref() {
@@ -537,6 +589,14 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                     );
                 }
 
+                #[cfg(windows)]
+                unsafe {
+                    windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(
+                        job_handle as _,
+                        std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _
+                    );
+                }
+
                 processes.push(crate::engine::state::ProcessInfo {
                     pid,
                     name: name.to_string(),
@@ -566,6 +626,8 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     let job = crate::engine::state::Job {
         id: state.next_job_id,
         pgid: first_pgid,
+        #[cfg(windows)]
+        job_handle,
         command: crate::engine::job_control::format_command(&pipeline),
         processes,
         reported_done: false,

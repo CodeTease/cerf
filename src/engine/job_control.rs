@@ -106,8 +106,88 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
 }
 
 #[cfg(windows)]
-pub fn wait_for_job(_job_id: usize, _state: &mut ShellState, _fg: bool) -> i32 {
-    0
+pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
+    use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
+    use windows_sys::Win32::System::SystemServices::{
+        JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS
+    };
+
+    let mut last_code = 0;
+
+    loop {
+        let job = match state.jobs.get_mut(&job_id) {
+            Some(j) => j,
+            None => break,
+        };
+        
+        if job.is_stopped() {
+            if fg {
+                println!("\n[{}] Stopped  {}", job.id, job.command);
+            }
+            break;
+        }
+        if job.is_done() {
+            if let JobState::Done(c) = job.state() {
+                last_code = c;
+            }
+            if fg {
+                state.jobs.remove(&job_id);
+            }
+            break;
+        }
+        
+        if !fg {
+            break;
+        }
+
+        let mut num_bytes = 0;
+        let mut comp_key = 0;
+        let mut overlapped = std::ptr::null_mut();
+        
+        let res = unsafe {
+            GetQueuedCompletionStatus(
+                state.iocp_handle as _,
+                &mut num_bytes,
+                &mut comp_key,
+                &mut overlapped,
+                windows_sys::Win32::System::Threading::INFINITE,
+            )
+        };
+        
+        if res != 0 {
+            let msg = num_bytes;
+            let event_job_id = comp_key as usize;
+            let pid = overlapped as usize as u32;
+
+            if msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO {
+                if let Some(j) = state.jobs.get_mut(&event_job_id) {
+                    for p in &mut j.processes {
+                        if p.state == JobState::Running {
+                            p.state = JobState::Done(0);
+                        }
+                    }
+                }
+            } else if msg == JOB_OBJECT_MSG_EXIT_PROCESS || msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+                let mut exit_code = 0;
+                unsafe {
+                    let proc_handle = windows_sys::Win32::System::Threading::OpenProcess(
+                        windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION,
+                        0,
+                        pid
+                    );
+                    if !proc_handle.is_null() {
+                        windows_sys::Win32::System::Threading::GetExitCodeProcess(proc_handle, &mut exit_code);
+                        windows_sys::Win32::Foundation::CloseHandle(proc_handle);
+                    } else if msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+                        exit_code = 1;
+                    }
+                }
+                update_pid_state(state, pid, JobState::Done(exit_code as i32));
+            }
+        }
+    }
+    
+    last_code
 }
 
 /// Update statuses of all jobs in the background (WNOHANG)
@@ -149,7 +229,6 @@ pub fn update_jobs(state: &mut ShellState) {
     }
 }
 
-#[cfg(unix)]
 fn update_pid_state(state: &mut ShellState, pid: u32, new_state: JobState) {
     for job in state.jobs.values_mut() {
         for p in &mut job.processes {
@@ -161,7 +240,76 @@ fn update_pid_state(state: &mut ShellState, pid: u32, new_state: JobState) {
 }
 
 #[cfg(windows)]
-pub fn update_jobs(_state: &mut ShellState) {}
+pub fn update_jobs(state: &mut ShellState) {
+    use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
+    use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS};
+
+    loop {
+        let mut num_bytes = 0;
+        let mut comp_key = 0;
+        let mut overlapped = std::ptr::null_mut();
+        
+        let res = unsafe {
+            GetQueuedCompletionStatus(
+                state.iocp_handle as _,
+                &mut num_bytes,
+                &mut comp_key,
+                &mut overlapped,
+                0, // WNOHANG WNOHANG
+            )
+        };
+        
+        if res == 0 {
+            break;
+        }
+
+        let msg = num_bytes;
+        let event_job_id = comp_key as usize;
+        let pid = overlapped as usize as u32;
+
+        if msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO {
+            if let Some(j) = state.jobs.get_mut(&event_job_id) {
+                for p in &mut j.processes {
+                    if p.state == JobState::Running {
+                        p.state = JobState::Done(0);
+                    }
+                }
+            }
+        } else if msg == JOB_OBJECT_MSG_EXIT_PROCESS || msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+            let mut exit_code = 0;
+            unsafe {
+                let proc_handle = windows_sys::Win32::System::Threading::OpenProcess(
+                    windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION,
+                    0,
+                    pid
+                );
+                if !proc_handle.is_null() {
+                    windows_sys::Win32::System::Threading::GetExitCodeProcess(proc_handle, &mut exit_code);
+                    windows_sys::Win32::Foundation::CloseHandle(proc_handle);
+                } else if msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+                    exit_code = 1;
+                }
+            }
+            update_pid_state(state, pid, JobState::Done(exit_code as i32));
+        }
+    }
+    
+    // Print and remove done jobs
+    let mut to_remove = Vec::new();
+    for (&id, job) in &mut state.jobs {
+        if job.is_done() {
+            if !job.reported_done {
+                println!("[{}] Done  {}", id, job.command);
+                job.reported_done = true;
+            }
+            to_remove.push(id);
+        }
+    }
+    
+    for id in to_remove {
+        state.jobs.remove(&id);
+    }
+}
 
 pub fn format_command(pipeline: &crate::parser::Pipeline) -> String {
     pipeline.commands.iter().map(|c| {

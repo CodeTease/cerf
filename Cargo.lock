@@ -17,6 +17,7 @@ dependencies = [
  "nix 0.31.1",
  "nom",
  "rustyline",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
