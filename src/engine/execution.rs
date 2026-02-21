@@ -286,11 +286,22 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             }
 
             #[cfg(unix)]
+            let is_bg = pipeline.background;
+
+            #[cfg(unix)]
             let result = unsafe {
                 command
-                    .pre_exec(|| {
+                    .pre_exec(move || {
                         let pid = nix::unistd::getpid();
                         let _ = nix::unistd::setpgid(pid, pid);
+                        if !is_bg {
+                            let stdin = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDIN_FILENO);
+                            let stderr = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDERR_FILENO);
+                            let stdout = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDOUT_FILENO);
+                            let _ = nix::unistd::tcsetpgrp(stdin, pid)
+                                .or_else(|_| nix::unistd::tcsetpgrp(stderr, pid))
+                                .or_else(|_| nix::unistd::tcsetpgrp(stdout, pid));
+                        }
                         signals::restore_default();
                         Ok(())
                     })
@@ -471,12 +482,23 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         let target_pgid = first_pgid;
         
         #[cfg(unix)]
+        let is_bg = pipeline.background;
+
+        #[cfg(unix)]
         let result = unsafe {
             command
                 .pre_exec(move || {
                     let pid = nix::unistd::getpid();
                     let pgid = if target_pgid == 0 { pid } else { nix::unistd::Pid::from_raw(target_pgid as i32) };
                     let _ = nix::unistd::setpgid(pid, pgid);
+                    if !is_bg {
+                        let stdin = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDIN_FILENO);
+                        let stderr = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDERR_FILENO);
+                        let stdout = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDOUT_FILENO);
+                        let _ = nix::unistd::tcsetpgrp(stdin, pgid)
+                            .or_else(|_| nix::unistd::tcsetpgrp(stderr, pgid))
+                            .or_else(|_| nix::unistd::tcsetpgrp(stdout, pgid));
+                    }
                     signals::restore_default();
                     Ok(())
                 })
