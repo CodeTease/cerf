@@ -312,7 +312,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             let result = command.spawn();
 
             let code = match result {
-                Ok(child) => {
+                Ok(mut child) => {
                     let pid = child.id();
                     
                     #[cfg(unix)]
@@ -342,7 +342,21 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                         println!("[{}] {}", job_id, pid);
                         0
                     } else {
-                        crate::engine::job_control::wait_for_job(job_id, state, true)
+                        #[cfg(unix)]
+                        {
+                            crate::engine::job_control::wait_for_job(job_id, state, true)
+                        }
+                        #[cfg(windows)]
+                        {
+                            let code = child.wait().map(|s| s.code().unwrap_or(0)).unwrap_or(1);
+                            if let Some(job) = state.jobs.get_mut(&job_id) {
+                                for p in &mut job.processes {
+                                    p.state = crate::engine::state::JobState::Done(code);
+                                }
+                            }
+                            state.jobs.remove(&job_id);
+                            code
+                        }
                     }
                 }
                 Err(e) => {
@@ -564,7 +578,24 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         println!("[{}] {}", job_id, first_pgid);
         0
     } else {
-        crate::engine::job_control::wait_for_job(job_id, state, true)
+        #[cfg(unix)]
+        {
+            crate::engine::job_control::wait_for_job(job_id, state, true)
+        }
+        #[cfg(windows)]
+        {
+            let mut last = 0;
+            for mut child in children {
+                last = child.wait().map(|s| s.code().unwrap_or(0)).unwrap_or(1);
+            }
+            if let Some(job) = state.jobs.get_mut(&job_id) {
+                for p in &mut job.processes {
+                    p.state = crate::engine::state::JobState::Done(last);
+                }
+            }
+            state.jobs.remove(&job_id);
+            last
+        }
     };
 
     let final_code = if pipeline.negated {
