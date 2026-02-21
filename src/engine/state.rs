@@ -37,7 +37,9 @@ pub struct Job {
 
 impl Job {
     pub fn is_stopped(&self) -> bool {
-        self.processes.iter().all(|p| matches!(p.state, JobState::Stopped | JobState::Done(_)))
+        let all_suspended = self.processes.iter().all(|p| matches!(p.state, JobState::Stopped | JobState::Done(_)));
+        let any_stopped = self.processes.iter().any(|p| matches!(p.state, JobState::Stopped));
+        all_suspended && any_stopped
     }
     
     pub fn is_done(&self) -> bool {
