@@ -44,6 +44,11 @@ fn main() -> rustyline::Result<()> {
     
     let mut state = ShellState::new();
 
+    #[cfg(unix)]
+    {
+        state.shell_pgid = Some(nix::unistd::Pid::from_raw(nix::unistd::getpid().as_raw()));
+    }
+
     let args: Vec<String> = env::args().collect();
     if args.len() >= 3 && args[1] == "-c" {
         let input = &args[2];
