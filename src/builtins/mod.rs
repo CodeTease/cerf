@@ -8,3 +8,4 @@ pub mod export;
 pub mod source;
 pub mod history;
 pub mod unset;
+pub mod dirs;

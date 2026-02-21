@@ -76,6 +76,27 @@ fn execute_simple(cmd: &ParsedCommand, state: &mut ShellState) -> (ExecutionResu
             };
             (ExecutionResult::KeepRunning, code)
         },
+        "pushd" => {
+            let redir_file = stdout_redir.and_then(|r| open_stdout_redirect(r).ok());
+            let code = match builtins::dirs::pushd(&args, state, redir_file) {
+                Ok(()) => 0,
+                Err(e) => { eprintln!("cerf: {}", e); 1 }
+            };
+            (ExecutionResult::KeepRunning, code)
+        },
+        "popd" => {
+            let redir_file = stdout_redir.and_then(|r| open_stdout_redirect(r).ok());
+            let code = match builtins::dirs::popd(&args, state, redir_file) {
+                Ok(()) => 0,
+                Err(e) => { eprintln!("cerf: {}", e); 1 }
+            };
+            (ExecutionResult::KeepRunning, code)
+        },
+        "dirs" => {
+            let redir_file = stdout_redir.and_then(|r| open_stdout_redirect(r).ok());
+            builtins::dirs::run_dirs(state, redir_file);
+            (ExecutionResult::KeepRunning, 0)
+        },
         "pwd" => {
             if let Some(redir) = stdout_redir {
                 match open_stdout_redirect(redir) {

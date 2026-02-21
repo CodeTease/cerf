@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 pub struct ShellState {
     pub previous_dir: Option<PathBuf>,
+    pub dir_stack: Vec<PathBuf>,
     /// All currently-defined aliases. Maps alias name → replacement string.
     pub aliases: HashMap<String, String>,
     /// All currently-defined shell variables.
@@ -18,6 +19,7 @@ impl ShellState {
 
         let mut state = ShellState {
             previous_dir: None,
+            dir_stack: Vec::new(),
             aliases: HashMap::new(),
             variables,
             history: Vec::new(),
