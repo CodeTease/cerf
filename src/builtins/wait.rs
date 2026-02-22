@@ -9,8 +9,8 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         }
         0
     } else {
-        let job_id = if let Some(id_str) = args[0].strip_prefix('%') {
-            id_str.parse().ok()
+        let job_id = if args[0].starts_with('%') {
+            crate::engine::job_control::resolve_job_specifier(&args[0], state).ok()
         } else {
             args[0].parse().ok()
         };
@@ -23,7 +23,11 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                 127
             }
         } else {
-            eprintln!("cerf: wait: '{}': not a pid or valid job spec", args[0]);
+            if args[0].starts_with('%') {
+                eprintln!("cerf: wait: {}", crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err());
+            } else {
+                eprintln!("cerf: wait: '{}': not a pid or valid job spec", args[0]);
+            }
             1
         }
     }

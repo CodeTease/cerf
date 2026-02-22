@@ -107,12 +107,12 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
 
 #[cfg(windows)]
 pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
-    use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
-    use windows_sys::Win32::System::SystemServices::{
-        JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS
-    };
 
     let mut last_code = 0;
+
+    if fg {
+        crate::FG_JOB.store(job_id, std::sync::atomic::Ordering::Relaxed);
+    }
 
     loop {
         let job = match state.jobs.get_mut(&job_id) {
@@ -140,54 +140,66 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
             break;
         }
 
-        let mut num_bytes = 0;
-        let mut comp_key = 0;
-        let mut overlapped = std::ptr::null_mut();
+        // Pump messages from the generic IOCP receiver if available
+        crate::engine::job_control::pump_iocp(state);
         
-        let res = unsafe {
-            GetQueuedCompletionStatus(
-                state.iocp_handle as _,
-                &mut num_bytes,
-                &mut comp_key,
-                &mut overlapped,
-                windows_sys::Win32::System::Threading::INFINITE,
-            )
-        };
-        
-        if res != 0 {
-            let msg = num_bytes;
-            let event_job_id = comp_key as usize;
-            let pid = overlapped as usize as u32;
-
-            if msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO {
-                if let Some(j) = state.jobs.get_mut(&event_job_id) {
-                    for p in &mut j.processes {
-                        if p.state == JobState::Running {
-                            p.state = JobState::Done(0);
-                        }
-                    }
-                }
-            } else if msg == JOB_OBJECT_MSG_EXIT_PROCESS || msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
-                let mut exit_code = 0;
-                unsafe {
-                    let proc_handle = windows_sys::Win32::System::Threading::OpenProcess(
-                        windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION,
-                        0,
-                        pid
-                    );
-                    if !proc_handle.is_null() {
-                        windows_sys::Win32::System::Threading::GetExitCodeProcess(proc_handle, &mut exit_code);
-                        windows_sys::Win32::Foundation::CloseHandle(proc_handle);
-                    } else if msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
-                        exit_code = 1;
-                    }
-                }
-                update_pid_state(state, pid, JobState::Done(exit_code as i32));
-            }
-        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    
+    if fg {
+        crate::FG_JOB.store(0, std::sync::atomic::Ordering::Relaxed);
     }
     
     last_code
+}
+
+#[cfg(windows)]
+pub fn pump_iocp(state: &mut ShellState) {
+    let mut msgs = Vec::new();
+    if let Some(rx) = &state.iocp_receiver {
+        while let Ok(msg) = rx.try_recv() {
+            msgs.push(msg);
+        }
+    }
+    for msg in msgs {
+        handle_iocp_msg(state, msg);
+    }
+}
+
+#[cfg(windows)]
+pub fn handle_iocp_msg(state: &mut ShellState, msg: IocpMessage) {
+    use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS};
+    let event_job_id = msg.job_id;
+    let pid = msg.pid;
+
+    if msg.msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO {
+        if let Some(j) = state.jobs.get_mut(&event_job_id) {
+            for p in &mut j.processes {
+                if p.state == JobState::Running {
+                    p.state = JobState::Done(0);
+                }
+            }
+        }
+    } else if msg.msg == JOB_OBJECT_MSG_EXIT_PROCESS || msg.msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+        let mut exit_code = 0;
+        unsafe {
+            let proc_handle = windows_sys::Win32::System::Threading::OpenProcess(
+                windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION,
+                0,
+                pid
+            );
+            if !proc_handle.is_null() {
+                windows_sys::Win32::System::Threading::GetExitCodeProcess(proc_handle, &mut exit_code);
+                windows_sys::Win32::Foundation::CloseHandle(proc_handle);
+            } else if msg.msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+                exit_code = 1;
+            }
+        }
+        update_pid_state(state, pid, JobState::Done(exit_code as i32));
+    }
+    
+    // Check if job is fully done and report if it was a background job
+    // Actually handled by update_jobs printing
 }
 
 /// Update statuses of all jobs in the background (WNOHANG)
@@ -241,58 +253,7 @@ fn update_pid_state(state: &mut ShellState, pid: u32, new_state: JobState) {
 
 #[cfg(windows)]
 pub fn update_jobs(state: &mut ShellState) {
-    use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
-    use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS};
-
-    loop {
-        let mut num_bytes = 0;
-        let mut comp_key = 0;
-        let mut overlapped = std::ptr::null_mut();
-        
-        let res = unsafe {
-            GetQueuedCompletionStatus(
-                state.iocp_handle as _,
-                &mut num_bytes,
-                &mut comp_key,
-                &mut overlapped,
-                0, // WNOHANG WNOHANG
-            )
-        };
-        
-        if res == 0 {
-            break;
-        }
-
-        let msg = num_bytes;
-        let event_job_id = comp_key as usize;
-        let pid = overlapped as usize as u32;
-
-        if msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO {
-            if let Some(j) = state.jobs.get_mut(&event_job_id) {
-                for p in &mut j.processes {
-                    if p.state == JobState::Running {
-                        p.state = JobState::Done(0);
-                    }
-                }
-            }
-        } else if msg == JOB_OBJECT_MSG_EXIT_PROCESS || msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
-            let mut exit_code = 0;
-            unsafe {
-                let proc_handle = windows_sys::Win32::System::Threading::OpenProcess(
-                    windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION,
-                    0,
-                    pid
-                );
-                if !proc_handle.is_null() {
-                    windows_sys::Win32::System::Threading::GetExitCodeProcess(proc_handle, &mut exit_code);
-                    windows_sys::Win32::Foundation::CloseHandle(proc_handle);
-                } else if msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
-                    exit_code = 1;
-                }
-            }
-            update_pid_state(state, pid, JobState::Done(exit_code as i32));
-        }
-    }
+    pump_iocp(state);
     
     // Print and remove done jobs
     let mut to_remove = Vec::new();
@@ -320,4 +281,49 @@ pub fn format_command(pipeline: &crate::parser::Pipeline) -> String {
         parts.extend(c.args.iter().map(|a| a.value.clone()));
         parts.join(" ")
     }).collect::<Vec<_>>().join(" | ") + if pipeline.background { " &" } else { "" }
+}
+
+pub fn set_current_job(state: &mut ShellState, job_id: usize) {
+    if state.current_job == Some(job_id) {
+        return;
+    }
+    state.previous_job = state.current_job;
+    state.current_job = Some(job_id);
+}
+
+pub fn resolve_job_specifier(arg: &str, state: &ShellState) -> Result<usize, String> {
+    if arg == "%+" || arg == "%%" {
+        return state.current_job.ok_or_else(|| "current: no such job".to_string());
+    } else if arg == "%-" {
+        return state.previous_job.ok_or_else(|| "previous: no such job".to_string());
+    } else if let Some(id_str) = arg.strip_prefix('%') {
+        if let Ok(id) = id_str.parse::<usize>() {
+            return Ok(id);
+        } else {
+            // Find by string prefix
+            let mut matches = Vec::new();
+            for (&id, job) in &state.jobs {
+                if job.command.starts_with(id_str) {
+                    matches.push(id);
+                }
+            }
+            if matches.is_empty() {
+                return Err(format!("%{}: no such job", id_str));
+            } else if matches.len() > 1 {
+                return Err(format!("%{}: ambiguous job specifier", id_str));
+            } else {
+                return Ok(matches[0]);
+            }
+        }
+    } else if let Ok(id) = arg.parse::<usize>() {
+        return Ok(id);
+    }
+    Err(format!("{}: invalid job specifier", arg))
+}
+
+#[cfg(windows)]
+pub struct IocpMessage {
+    pub msg: u32,
+    pub job_id: usize,
+    pub pid: u32,
 }

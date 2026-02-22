@@ -5,8 +5,12 @@ mod signals;
 
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use rustyline::ExternalPrinter;
 use std::env;
+use std::sync::atomic::AtomicUsize;
 use engine::ShellState;
+
+pub static FG_JOB: AtomicUsize = AtomicUsize::new(0);
 
 fn get_prompt() -> String {
     let cwd = env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -62,6 +66,61 @@ fn main() -> rustyline::Result<()> {
     source_profile(&mut state);
 
     let mut rl = DefaultEditor::new()?;
+    let mut printer_opt = rl.create_external_printer().ok();
+
+    #[cfg(windows)]
+    {
+        let (tx, rx) = std::sync::mpsc::channel::<engine::job_control::IocpMessage>();
+        state.iocp_receiver = Some(rx);
+        let handle = state.iocp_handle;
+        
+        std::thread::spawn(move || {
+            use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
+            use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS};
+            
+            loop {
+                let mut num_bytes = 0;
+                let mut comp_key = 0;
+                let mut overlapped = std::ptr::null_mut();
+                
+                let res = unsafe {
+                    GetQueuedCompletionStatus(
+                        handle as _,
+                        &mut num_bytes,
+                        &mut comp_key,
+                        &mut overlapped,
+                        windows_sys::Win32::System::Threading::INFINITE,
+                    )
+                };
+                
+                if res != 0 {
+                    let msg = num_bytes;
+                    let event_job_id = comp_key as usize;
+                    let pid = overlapped as usize as u32;
+
+                    let is_active_zero = msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO;
+                    
+                    if is_active_zero {
+                        let fg = FG_JOB.load(std::sync::atomic::Ordering::Relaxed);
+                        if fg != event_job_id {
+                            if let Some(ref mut p) = printer_opt {
+                                let _ = p.print(format!("\n[{}] Done", event_job_id));
+                            } else {
+                                // Fallback
+                                eprintln!("\n[{}] Done", event_job_id);
+                            }
+                        }
+                    }
+
+                    let _ = tx.send(engine::job_control::IocpMessage {
+                        msg,
+                        job_id: event_job_id,
+                        pid,
+                    });
+                }
+            }
+        });
+    }
 
     loop {
         // Poll for any background jobs that have finished

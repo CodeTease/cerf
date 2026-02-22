@@ -68,15 +68,15 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         for target in targets {
             let mut pids_to_kill = Vec::new();
             
-            if let Some(id_str) = target.strip_prefix('%') {
-                if let Ok(id) = id_str.parse::<usize>() {
+            if target.starts_with('%') {
+                if let Ok(id) = crate::engine::job_control::resolve_job_specifier(target, state) {
                     if let Some(job) = state.jobs.get(&id) {
                         pids_to_kill.push(-(job.pgid as i32));
-                    } else {
-                        eprintln!("cerf: kill: %{}: no such job", id);
-                        code = 1;
-                        continue;
                     }
+                } else {
+                    eprintln!("cerf: kill: {}", crate::engine::job_control::resolve_job_specifier(target, state).unwrap_err());
+                    code = 1;
+                    continue;
                 }
             } else if let Ok(pid) = target.parse::<i32>() {
                 pids_to_kill.push(pid);
@@ -101,16 +101,16 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             let mut job_handle_to_kill = None;
             let mut pids_to_kill = Vec::new();
             
-            if let Some(id_str) = target.strip_prefix('%') {
-                if let Ok(id) = id_str.parse::<usize>() {
+            if target.starts_with('%') {
+                if let Ok(id) = crate::engine::job_control::resolve_job_specifier(target, state) {
                     if let Some(job) = state.jobs.get(&id) {
                         job_handle_to_kill = Some(job.job_handle);
                         pids_to_kill.extend(job.processes.iter().map(|p| p.pid));
-                    } else {
-                        eprintln!("cerf: kill: %{}: no such job", id);
-                        code = 1;
-                        continue;
                     }
+                } else {
+                    eprintln!("cerf: kill: {}", crate::engine::job_control::resolve_job_specifier(target, state).unwrap_err());
+                    code = 1;
+                    continue;
                 }
             } else if let Ok(pid) = target.parse::<u32>() {
                 pids_to_kill.push(pid);
@@ -189,4 +189,50 @@ pub fn suspend_or_resume_process_win(pid: u32, suspend: bool) {
             CloseHandle(snapshot);
         }
     }
+}
+
+#[cfg(windows)]
+pub fn get_job_pids(job_handle: isize) -> Vec<u32> {
+    use windows_sys::Win32::System::JobObjects::{QueryInformationJobObject, JobObjectBasicProcessIdList, JOBOBJECT_BASIC_PROCESS_ID_LIST};
+    
+    let mut pids = Vec::new();
+    unsafe {
+        // Initial buffer size, say 32 processes
+        let mut buffer_size = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() + std::mem::size_of::<usize>() * 32;
+        let mut buffer: Vec<u8> = vec![0; buffer_size];
+        
+        let mut return_length = 0;
+        let mut success = QueryInformationJobObject(
+            job_handle as _,
+            JobObjectBasicProcessIdList,
+            buffer.as_mut_ptr() as *mut _,
+            buffer_size as u32,
+            &mut return_length
+        );
+        
+        let mut list_ptr = buffer.as_ptr() as *const JOBOBJECT_BASIC_PROCESS_ID_LIST;
+        
+        // If buffer was too small, reallocate and try again
+        if success == 0 && (*list_ptr).NumberOfAssignedProcesses > (*list_ptr).NumberOfProcessIdsInList {
+            buffer_size = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() + std::mem::size_of::<usize>() * (*list_ptr).NumberOfAssignedProcesses as usize;
+            buffer = vec![0; buffer_size];
+            success = QueryInformationJobObject(
+                job_handle as _,
+                JobObjectBasicProcessIdList,
+                buffer.as_mut_ptr() as *mut _,
+                buffer_size as u32,
+                &mut return_length
+            );
+            list_ptr = buffer.as_ptr() as *const JOBOBJECT_BASIC_PROCESS_ID_LIST;
+        }
+
+        if success != 0 {
+            let num_pids = (*list_ptr).NumberOfProcessIdsInList as usize;
+            let pid_array_ptr = (*list_ptr).ProcessIdList.as_ptr();
+            for i in 0..num_pids {
+                pids.push(*pid_array_ptr.add(i) as u32);
+            }
+        }
+    }
+    pids
 }

@@ -18,3 +18,4 @@ pub mod fg;
 pub mod bg;
 pub mod wait;
 pub mod kill_cmd;
+pub mod tether;

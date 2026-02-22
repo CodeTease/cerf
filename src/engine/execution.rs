@@ -94,6 +94,14 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             let code = builtins::kill_cmd::run(&args, state);
             (ExecutionResult::KeepRunning, code)
         },
+        "tether" => {
+            let code = builtins::tether::run_tether(&args, state);
+            (ExecutionResult::KeepRunning, code)
+        },
+        "untether" => {
+            let code = builtins::tether::run_untether(&args, state);
+            (ExecutionResult::KeepRunning, code)
+        },
         "cd" => {
             let code = match builtins::cd::run(&args, state) {
                 Ok(()) => 0,
@@ -272,6 +280,8 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                         return (ExecutionResult::KeepRunning, 1);
                     }
                 }
+            } else if pipeline.background {
+                command.stdin(Stdio::null());
             }
 
             // Apply stdout redirect
@@ -330,7 +340,9 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                             std::ptr::null()
                         );
                         let mut limit_info: windows_sys::Win32::System::JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-                        limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                        if !pipeline.background {
+                            limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                        }
                         windows_sys::Win32::System::JobObjects::SetInformationJobObject(
                             handle,
                             windows_sys::Win32::System::JobObjects::JobObjectExtendedLimitInformation,
@@ -445,7 +457,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             std::ptr::null()
         );
         let mut limit_info: windows_sys::Win32::System::JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-        limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if !pipeline.background {
+            limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        }
         windows_sys::Win32::System::JobObjects::SetInformationJobObject(
             handle,
             windows_sys::Win32::System::JobObjects::JobObjectExtendedLimitInformation,
@@ -520,6 +534,8 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                         return (ExecutionResult::KeepRunning, 1);
                     }
                 }
+            } else if pipeline.background {
+                command.stdin(Stdio::null());
             }
         } else if let Some(stdout) = prev_stdout.take() {
             command.stdin(Stdio::from(stdout));

@@ -79,12 +79,16 @@ pub struct ShellState {
     // Job control
     pub jobs: HashMap<usize, Job>,
     pub next_job_id: usize,
+    pub current_job: Option<usize>,
+    pub previous_job: Option<usize>,
     #[cfg(unix)]
     pub shell_pgid: Option<nix::unistd::Pid>,
     #[cfg(unix)]
     pub shell_term: Option<std::os::fd::RawFd>,
     #[cfg(windows)]
     pub iocp_handle: isize,
+    #[cfg(windows)]
+    pub iocp_receiver: Option<std::sync::mpsc::Receiver<crate::engine::job_control::IocpMessage>>,
 }
 
 impl ShellState {
@@ -100,6 +104,8 @@ impl ShellState {
             history: Vec::new(),
             jobs: HashMap::new(),
             next_job_id: 1,
+            current_job: None,
+            previous_job: None,
             #[cfg(unix)]
             shell_pgid: None,
             #[cfg(unix)]
@@ -113,6 +119,8 @@ impl ShellState {
                     1,
                 ) as isize
             },
+            #[cfg(windows)]
+            iocp_receiver: None,
         };
         state.load_history();
         state

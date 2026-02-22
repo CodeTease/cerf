@@ -3,14 +3,17 @@ use crate::engine::ShellState;
 pub fn run(args: &[String], state: &mut ShellState) -> i32 {
     let mut job_id = None;
     if args.is_empty() {
-        if let Some(&id) = state.jobs.keys().max() {
+        if let Ok(id) = crate::engine::job_control::resolve_job_specifier("%+", state) {
+            job_id = Some(id);
+        } else if let Some(&id) = state.jobs.keys().max() {
             job_id = Some(id);
         }
     } else {
-        if let Some(id_str) = args[0].strip_prefix('%') {
-            job_id = id_str.parse().ok();
+        if let Ok(id) = crate::engine::job_control::resolve_job_specifier(&args[0], state) {
+            job_id = Some(id);
         } else {
-            job_id = args[0].parse().ok();
+            eprintln!("cerf: bg: {}", crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err());
+            return 1;
         }
     }
 
@@ -32,12 +35,13 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             
             #[cfg(windows)]
             {
-                let pids: Vec<u32> = job.processes.iter().map(|p| p.pid).collect();
+                let pids = crate::builtins::kill_cmd::get_job_pids(job.job_handle);
                 for pid in pids {
                     crate::builtins::kill_cmd::suspend_or_resume_process_win(pid, false);
                 }
             }
             
+            crate::engine::job_control::set_current_job(state, id);
             0
         } else {
             eprintln!("cerf: bg: %{}: no such job", id);
