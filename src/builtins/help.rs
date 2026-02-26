@@ -1,45 +1,72 @@
-// PLACEHOLDER
-// TODO: Actually implement help
+use std::process::Command;
+use crate::engine::{ExecutionResult, ShellState};
+use crate::builtins::registry::{CommandInfo, BUILTINS, find_command};
+use crate::engine::path::find_executable;
 
-pub fn run(args: &[String]) -> String {
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "help",
+    description: "Display information about builtin commands.",
+    usage: "help [pattern ...]\n\nDisplay information about builtin commands. If PATTERN is specified,\ngives detailed help on all commands matching PATTERN, otherwise prints\na list of the builtins and their descriptions.",
+    run: help_runner,
+};
+
+pub fn help_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    let mut exit_code = 0;
+
     if args.is_empty() {
         let mut help_text = String::new();
         help_text.push_str("cerf, version 0.1.0\n");
-        help_text.push_str("These shell commands are defined internally.  Type `help' to see this list.\n");
-        help_text.push_str("Type `help name' to find out more about the function `name'.\n");
-        help_text.push_str("Use `man -k' or `info' to find out more about commands not in this list.\n\n");
-        help_text.push_str(" alias [name[=value] ... ]\n");
-        help_text.push_str(" bg [job_spec ...]\n");
-        help_text.push_str(" cd [dir]\n");
-        help_text.push_str(" clear\n");
-        help_text.push_str(" dirs [-clpv]\n");
-        help_text.push_str(" echo [arg ...]\n");
-        help_text.push_str(" exec [command [arguments ...]]\n");
-        help_text.push_str(" exit [n]\n");
-        help_text.push_str(" export [name[=value] ...]\n");
-        help_text.push_str(" false\n");
-        help_text.push_str(" fg [job_spec]\n");
-        help_text.push_str(" help [pattern ...]\n");
-        help_text.push_str(" history\n");
-        help_text.push_str(" jobs\n");
-        help_text.push_str(" kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l\n");
-        help_text.push_str(" popd [-n] [+N | -N]\n");
-        help_text.push_str(" pushd [-n] [+N | -N | dir]\n");
-        help_text.push_str(" pwd\n");
-        help_text.push_str(" read [arg ...]\n");
-        help_text.push_str(" set\n");
-        help_text.push_str(" source filename [arguments]\n");
-        help_text.push_str(" test [expr]\n");
-        help_text.push_str(" tether [pid]\n");
-        help_text.push_str(" true\n");
-        help_text.push_str(" type [-afptP] name [name ...]\n");
-        help_text.push_str(" unalias [-a] name [name ...]\n");
-        help_text.push_str(" unset [name ...]\n");
-        help_text.push_str(" untether [pid]\n");
-        help_text.push_str(" wait [id]\n");
-        help_text.push_str(" [ arg... ]\n");
-        help_text
+        help_text.push_str("These shell commands are defined internally. Type `help` to see this list.\n");
+        help_text.push_str("Type `help name` to find out more about the function `name`.\n");
+        help_text.push_str("Use `man -k` or `info` to find out more about commands not in this list.\n\n");
+
+        let max_len = BUILTINS.iter().map(|b| b.name.len()).max().unwrap_or(0);
+
+        for builtin in BUILTINS {
+            help_text.push_str(&format!(" {:<width$}  {}\n", builtin.name, builtin.description, width = max_len));
+        }
+        print!("{}", help_text);
     } else {
-        format!("cerf: help: no help topics match `{}`\n", args[0])
+        for arg in args {
+            if let Some(cmd) = find_command(arg) {
+                println!("{}: {}", cmd.name, cmd.description);
+                println!("{}", cmd.usage);
+            } else {
+                // OS Fallback
+                #[cfg(unix)]
+                {
+                    if find_executable("man").is_some() {
+                        let mut command = Command::new("man");
+                        command.arg(arg);
+                        match command.status() {
+                            Ok(status) if status.success() => {},
+                            _ => {
+                                // Fallback to `<cmd> --help` if `man` fails
+                                try_help_flag(arg);
+                            }
+                        }
+                    } else {
+                        try_help_flag(arg);
+                    }
+                }
+                
+                #[cfg(windows)]
+                {
+                    try_help_flag(arg);
+                }
+                exit_code = 127; // Will be overwritten if successful, or kept if not a known builtin/command
+            }
+        }
+    }
+    (ExecutionResult::KeepRunning, exit_code)
+}
+
+fn try_help_flag(cmd_name: &str) {
+    if find_executable(cmd_name).is_some() {
+        let mut command = Command::new(cmd_name);
+        command.arg("--help");
+        let _ = command.status();
+    } else {
+        eprintln!("cerf: help: no help topics match `{}`", cmd_name);
     }
 }

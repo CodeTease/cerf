@@ -1,5 +1,18 @@
-use crate::engine::ShellState;
+use crate::engine::state::{ExecutionResult, ShellState};
 use crate::engine::job_control::wait_for_job;
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "wait",
+    description: "Wait for job completion and return exit status.",
+    usage: "wait [id]\n\nWait for the specified process or job and return its termination status.",
+    run: wait_runner,
+};
+
+pub fn wait_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    let code = run(args, state);
+    (ExecutionResult::KeepRunning, code)
+}
 
 pub fn run(args: &[String], state: &mut ShellState) -> i32 {
     if args.is_empty() {

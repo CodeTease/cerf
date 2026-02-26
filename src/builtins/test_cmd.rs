@@ -1,5 +1,29 @@
 use std::fs;
 use std::path::Path;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO_TEST: CommandInfo = CommandInfo {
+    name: "test",
+    description: "Evaluate conditional expressions.",
+    usage: "test [expr]\n\nEvaluate conditional expressions following POSIX semantics.",
+    run: test_runner,
+};
+
+pub fn test_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    (ExecutionResult::KeepRunning, run(args, false))
+}
+
+pub const COMMAND_INFO_BRACKET: CommandInfo = CommandInfo {
+    name: "[",
+    description: "Evaluate conditional expressions.",
+    usage: "[ expr ]\n\nEvaluate conditional expressions following POSIX semantics. Requires a closing bracket.",
+    run: bracket_runner,
+};
+
+pub fn bracket_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    (ExecutionResult::KeepRunning, run(args, true))
+}
 
 /// The `test` / `[` built-in command.
 ///

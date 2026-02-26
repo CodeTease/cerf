@@ -1,4 +1,18 @@
 use std::collections::HashMap;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "unalias",
+    description: "Remove each NAME from the list of defined aliases.",
+    usage: "unalias [-a] name [name ...]\n\nRemove each NAME from the list of defined aliases. If -a is supplied, all alias definitions are removed.",
+    run: unalias_runner,
+};
+
+pub fn unalias_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    run(args, &mut state.aliases);
+    (ExecutionResult::KeepRunning, 0)
+}
 
 /// Run the `unalias` builtin.
 ///

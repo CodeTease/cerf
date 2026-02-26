@@ -1,4 +1,48 @@
 use std::path::PathBuf;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+
+pub const COMMAND_INFO_EXIT: CommandInfo = CommandInfo {
+    name: "exit",
+    description: "Exit the shell.",
+    usage: "exit\n\nExit the shell.",
+    run: exit_runner,
+};
+
+pub fn exit_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    exit();
+    (ExecutionResult::Exit, 0)
+}
+
+pub const COMMAND_INFO_CLEAR: CommandInfo = CommandInfo {
+    name: "clear",
+    description: "Clear the terminal screen.",
+    usage: "clear\n\nClear the terminal screen.",
+    run: clear_runner,
+};
+
+pub fn clear_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    clear();
+    (ExecutionResult::KeepRunning, 0)
+}
+
+pub const COMMAND_INFO_EXEC: CommandInfo = CommandInfo {
+    name: "exec",
+    description: "Replace the shell with the given command.",
+    usage: "exec [command [arguments ...]]\n\nReplace the shell with the given command.",
+    run: exec_runner,
+};
+
+pub fn exec_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    match exec(args) {
+        Ok(code) => (ExecutionResult::Exit, code),
+        Err(e) => {
+            eprintln!("{}", e);
+            (ExecutionResult::KeepRunning, 1)
+        }
+    }
+}
 use std::process::Command;
 
 use crate::engine::path::{expand_home, find_executable};

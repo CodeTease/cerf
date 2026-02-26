@@ -1,5 +1,35 @@
 use std::env;
-use crate::engine::ShellState;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO_CD: CommandInfo = CommandInfo {
+    name: "cd",
+    description: "Change the shell working directory.",
+    usage: "cd [dir]\n\nChange the current directory to DIR. The default DIR is the value of the HOME shell variable.",
+    run: cd_runner,
+};
+
+pub const COMMAND_INFO_PWD: CommandInfo = CommandInfo {
+    name: "pwd",
+    description: "Print the name of the current working directory.",
+    usage: "pwd\n\nPrint the absolute pathname of the current working directory.",
+    run: pwd_runner,
+};
+
+pub fn pwd_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    pwd();
+    (ExecutionResult::KeepRunning, 0)
+}
+
+pub fn cd_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    match run(args, state) {
+        Ok(()) => (ExecutionResult::KeepRunning, 0),
+        Err(e) => {
+            eprintln!("cerf: cd: {}", e);
+            (ExecutionResult::KeepRunning, 1)
+        }
+    }
+}
 
 pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
     let current = env::current_dir().map_err(|e| e.to_string())?;

@@ -1,4 +1,17 @@
-use crate::engine::ShellState;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "bg",
+    description: "Move jobs to the background.",
+    usage: "bg [job_spec ...]\n\nPlace the jobs identified by each JOB_SPEC in the background, as if they had been started with `&`.",
+    run: bg_runner,
+};
+
+pub fn bg_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    let code = run(args, state);
+    (ExecutionResult::KeepRunning, code)
+}
 
 pub fn run(args: &[String], state: &mut ShellState) -> i32 {
     let mut job_id = None;

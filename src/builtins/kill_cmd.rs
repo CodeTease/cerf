@@ -1,4 +1,17 @@
-use crate::engine::ShellState;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "kill",
+    description: "Send a signal to a job.",
+    usage: "kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l\n\nSend the processes identified by PID or JOBSPEC the signal named by SIGSPEC or SIGNUM. If no signal is specified, SIGTERM is assumed.",
+    run: kill_runner,
+};
+
+pub fn kill_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    let code = run(args, state);
+    (ExecutionResult::KeepRunning, code)
+}
 
 pub fn run(args: &[String], state: &mut ShellState) -> i32 {
     if args.is_empty() {

@@ -1,4 +1,18 @@
 use std::collections::HashMap;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "alias",
+    description: "Define or display aliases.",
+    usage: "alias [name[=value] ... ]\n\nAlias with no arguments or with the -p option prints the list of aliases in the form alias NAME=VALUE on standard output. Otherwise, an alias is defined for each NAME whose VALUE is given.",
+    run: alias_runner,
+};
+
+pub fn alias_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    run(args, &mut state.aliases);
+    (ExecutionResult::KeepRunning, 0)
+}
 
 /// Run the `alias` builtin.
 ///

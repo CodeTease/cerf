@@ -1,7 +1,19 @@
 use std::io::Write;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
 
-use crate::engine::ShellState;
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "history",
+    description: "Display the history list with line numbers.",
+    usage: "history\n\nDisplay the history list with line numbers. Lines listed with a `*` have been modified.",
+    run: history_runner,
+};
 
+// We will use standard stdout redirect logic in execution.rs later, but for now we'll match history's previous custom signature minimally
+pub fn history_runner(_args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    run(state, None); // Redirs will be handled automatically later
+    (ExecutionResult::KeepRunning, 0)
+}
 /// Run the `history` builtin.
 ///
 /// Prints all recorded history entries, numbered starting from 1.

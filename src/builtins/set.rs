@@ -1,4 +1,17 @@
-use crate::engine::ShellState;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "set",
+    description: "Set or unset values of shell options and positional parameters.",
+    usage: "set [-abefhkmnptuvxBCHP] [-o option-name] [--] [arg ...]\n\nSet or unset values of shell options and positional parameters.",
+    run: set_runner,
+};
+
+pub fn set_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    let code = run(args, state);
+    (ExecutionResult::KeepRunning, code)
+}
 
 /// Run the `set` builtin.
 ///

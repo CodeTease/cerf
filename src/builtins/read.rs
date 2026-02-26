@@ -1,5 +1,25 @@
 use std::io::{self, BufRead, Write};
-use crate::engine::ShellState;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::builtins::registry::CommandInfo;
+
+pub const COMMAND_INFO: CommandInfo = CommandInfo {
+    name: "read",
+    description: "Read a line from the standard input and split it into fields.",
+    usage: "read [-prs] [-a array] [-d delim] [-i text] [-n nchars] [-N nchars] [-t timeout] [-u fd] [name ...]\n\nRead a line from the standard input and split it into fields.",
+    run: read_runner,
+};
+
+pub fn read_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
+    match run(args, state) {
+        Ok(()) => (ExecutionResult::KeepRunning, 0),
+        Err(e) => {
+            if !e.is_empty() {
+                eprintln!("cerf: read: {}", e);
+            }
+            (ExecutionResult::KeepRunning, 1)
+        }
+    }
+}
 
 pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
     let mut raw_mode = false;
