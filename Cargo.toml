@@ -1,5 +1,6 @@
 [package]
 name = "cerf"
+authors = ["CerfSh"]
 version = "0.1.0"
 edition = "2024"
 
