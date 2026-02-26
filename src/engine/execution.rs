@@ -181,6 +181,21 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             let code = builtins::test_cmd::run(&args, true);
             (ExecutionResult::KeepRunning, code)
         },
+        "help" => {
+            let output = builtins::help::run(&args);
+            if let Some(redir) = stdout_redir {
+                match open_stdout_redirect(redir) {
+                    Ok(mut f) => {
+                        let _ = write!(f, "{}", output);
+                        (ExecutionResult::KeepRunning, 0)
+                    }
+                    Err(e) => { eprintln!("{}", e); (ExecutionResult::KeepRunning, 1) }
+                }
+            } else {
+                print!("{}", output);
+                (ExecutionResult::KeepRunning, 0)
+            }
+        },
         "echo" => {
             let output = args.join(" ");
             if let Some(redir) = stdout_redir {
