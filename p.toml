@@ -1,10 +1,10 @@
 # Pavidi config file
-# Pavidi is also a CodeTease project
+# Pavidi is a CodeTease project
 
 [project]
 name = "cerf"
 version = "0.1.0"
-authors = ["CodeTease"]
+authors = ["CerfSh"]
 description = "A simple shell written in Rust"
 log_strategy = "always"
 log_plain = true
