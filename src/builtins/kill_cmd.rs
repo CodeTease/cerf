@@ -2,9 +2,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "kill",
+    name: "job.kill",
     description: "Send a signal to a job.",
-    usage: "kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or kill -l\n\nSend the processes identified by PID or JOBSPEC the signal named by SIGSPEC or SIGNUM. If no signal is specified, SIGTERM is assumed.",
+    usage: "job.kill [-s sigspec | -n signum | -sigspec] pid | jobspec ... or job.kill -l\n\nSend the processes identified by PID or JOBSPEC the signal named by SIGSPEC or SIGNUM. If no signal is specified, SIGTERM is assumed.",
     run: kill_runner,
 };
 

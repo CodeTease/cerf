@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "unset",
+    name: "env.unset",
     description: "Unset values and attributes of shell variables and functions.",
-    usage: "unset [-f] [-v] [-n] [name ...]\n\nUnset values and attributes of shell variables and functions.",
+    usage: "env.unset [-f] [-v] [-n] [name ...]\n\nUnset values and attributes of shell variables and functions.",
     run: unset_runner,
 };
 

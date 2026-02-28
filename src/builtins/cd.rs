@@ -3,16 +3,16 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO_CD: CommandInfo = CommandInfo {
-    name: "cd",
+    name: "dir.cd",
     description: "Change the shell working directory.",
-    usage: "cd [dir]\n\nChange the current directory to DIR. The default DIR is the value of the HOME shell variable.",
+    usage: "dir.cd [dir]\n\nChange the current directory to DIR. The default DIR is the value of the HOME shell variable.",
     run: cd_runner,
 };
 
 pub const COMMAND_INFO_PWD: CommandInfo = CommandInfo {
-    name: "pwd",
+    name: "dir.pwd",
     description: "Print the name of the current working directory.",
-    usage: "pwd\n\nPrint the absolute pathname of the current working directory.",
+    usage: "dir.pwd\n\nPrint the absolute pathname of the current working directory.",
     run: pwd_runner,
 };
 

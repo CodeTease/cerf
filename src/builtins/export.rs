@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "export",
+    name: "env.export",
     description: "Set export attribute for shell variables.",
-    usage: "export [name[=value] ...]\n\nMarks each NAME for automatic export to the environment of subsequently executed commands. If VALUE is supplied, assign VALUE before exporting.",
+    usage: "env.export [name[=value] ...]\n\nMarks each NAME for automatic export to the environment of subsequently executed commands. If VALUE is supplied, assign VALUE before exporting.",
     run: export_runner,
 };
 

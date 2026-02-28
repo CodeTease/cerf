@@ -2,9 +2,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO_TRUE: CommandInfo = CommandInfo {
-    name: "true",
+    name: "test.true",
     description: "Return a successful result.",
-    usage: "true\n\nReturn a successful result.",
+    usage: "test.true\n\nReturn a successful result.",
     run: true_runner,
 };
 
@@ -13,9 +13,9 @@ pub fn true_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResul
 }
 
 pub const COMMAND_INFO_FALSE: CommandInfo = CommandInfo {
-    name: "false",
+    name: "test.false",
     description: "Return an unsuccessful result.",
-    usage: "false\n\nReturn an unsuccessful result.",
+    usage: "test.false\n\nReturn an unsuccessful result.",
     run: false_runner,
 };
 

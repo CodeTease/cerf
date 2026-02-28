@@ -5,9 +5,9 @@ use crate::builtins::registry::CommandInfo;
 
 // For now, we stub redirects internally as we change the signature to match BuiltinRunner
 pub const COMMAND_INFO_PUSHD: CommandInfo = CommandInfo {
-    name: "pushd",
+    name: "dir.pushd",
     description: "Add a directory to the directory stack, or rotate the stack.",
-    usage: "pushd [-n] [+N | -N | dir]\n\nAdds a directory to the top of the directory stack, or rotates the stack, making the new top of the stack the current working directory.",
+    usage: "dir.pushd [-n] [+N | -N | dir]\n\nAdds a directory to the top of the directory stack, or rotates the stack, making the new top of the stack the current working directory.",
     run: pushd_runner,
 };
 
@@ -22,9 +22,9 @@ pub fn pushd_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult
 }
 
 pub const COMMAND_INFO_POPD: CommandInfo = CommandInfo {
-    name: "popd",
+    name: "dir.popd",
     description: "Remove directories from the directory stack.",
-    usage: "popd [-n] [+N | -N]\n\nRemoves entries from the directory stack.",
+    usage: "dir.popd [-n] [+N | -N]\n\nRemoves entries from the directory stack.",
     run: popd_runner,
 };
 
@@ -39,9 +39,9 @@ pub fn popd_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult,
 }
 
 pub const COMMAND_INFO_DIRS: CommandInfo = CommandInfo {
-    name: "dirs",
+    name: "dir.dirs",
     description: "Display the list of currently remembered directories.",
-    usage: "dirs [-clpv] [+N] [-N]\n\nDisplay the list of currently remembered directories.",
+    usage: "dir.dirs [-clpv] [+N] [-N]\n\nDisplay the list of currently remembered directories.",
     run: dirs_runner,
 };
 

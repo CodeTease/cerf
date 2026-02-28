@@ -2,9 +2,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "bg",
+    name: "job.bg",
     description: "Move jobs to the background.",
-    usage: "bg [job_spec ...]\n\nPlace the jobs identified by each JOB_SPEC in the background, as if they had been started with `&`.",
+    usage: "job.bg [job_spec ...]\n\nPlace the jobs identified by each JOB_SPEC in the background, as if they had been started with `&`.",
     run: bg_runner,
 };
 

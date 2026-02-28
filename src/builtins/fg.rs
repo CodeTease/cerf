@@ -3,9 +3,9 @@ use crate::builtins::registry::CommandInfo;
 
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "fg",
+    name: "job.fg",
     description: "Move job to the foreground.",
-    usage: "fg [job_spec]\n\nPlace the job identified by JOB_SPEC in the foreground, making it the current job.",
+    usage: "job.fg [job_spec]\n\nPlace the job identified by JOB_SPEC in the foreground, making it the current job.",
     run: fg_runner,
 };
 

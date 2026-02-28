@@ -4,9 +4,9 @@ use crate::builtins::registry::CommandInfo;
 
 
 pub const COMMAND_INFO_EXIT: CommandInfo = CommandInfo {
-    name: "exit",
+    name: "sys.exit",
     description: "Exit the shell.",
-    usage: "exit\n\nExit the shell.",
+    usage: "sys.exit\n\nExit the shell.",
     run: exit_runner,
 };
 
@@ -16,9 +16,9 @@ pub fn exit_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResul
 }
 
 pub const COMMAND_INFO_CLEAR: CommandInfo = CommandInfo {
-    name: "clear",
+    name: "sys.clear",
     description: "Clear the terminal screen.",
-    usage: "clear\n\nClear the terminal screen.",
+    usage: "sys.clear\n\nClear the terminal screen.",
     run: clear_runner,
 };
 
@@ -28,9 +28,9 @@ pub fn clear_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResu
 }
 
 pub const COMMAND_INFO_EXEC: CommandInfo = CommandInfo {
-    name: "exec",
+    name: "sys.exec",
     description: "Replace the shell with the given command.",
-    usage: "exec [command [arguments ...]]\n\nReplace the shell with the given command.",
+    usage: "sys.exec [command [arguments ...]]\n\nReplace the shell with the given command.",
     run: exec_runner,
 };
 

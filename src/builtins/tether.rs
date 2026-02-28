@@ -2,9 +2,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO_TETHER: CommandInfo = CommandInfo {
-    name: "tether",
+    name: "job.tether",
     description: "Tether a job to the shell.",
-    usage: "tether [pid]\n\nTether a job so it terminates when the shell exits (Windows only).",
+    usage: "job.tether [pid]\n\nTether a job so it terminates when the shell exits (Windows only).",
     run: tether_runner,
 };
 
@@ -14,9 +14,9 @@ pub fn tether_runner(args: &[String], state: &mut ShellState) -> (ExecutionResul
 }
 
 pub const COMMAND_INFO_UNTETHER: CommandInfo = CommandInfo {
-    name: "untether",
+    name: "job.untether",
     description: "Untether a job from the shell.",
-    usage: "untether [pid]\n\nUntether a job so it survives when the shell exits (Windows only).",
+    usage: "job.untether [pid]\n\nUntether a job so it survives when the shell exits (Windows only).",
     run: untether_runner,
 };
 

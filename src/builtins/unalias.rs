@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "unalias",
+    name: "alias.unset",
     description: "Remove each NAME from the list of defined aliases.",
-    usage: "unalias [-a] name [name ...]\n\nRemove each NAME from the list of defined aliases. If -a is supplied, all alias definitions are removed.",
+    usage: "alias.unset [-a] name [name ...]\n\nRemove each NAME from the list of defined aliases. If -a is supplied, all alias definitions are removed.",
     run: unalias_runner,
 };
 

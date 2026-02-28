@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "history",
+    name: "sys.history",
     description: "Display the history list with line numbers.",
-    usage: "history\n\nDisplay the history list with line numbers. Lines listed with a `*` have been modified.",
+    usage: "sys.history\n\nDisplay the history list with line numbers. Lines listed with a `*` have been modified.",
     run: history_runner,
 };
 

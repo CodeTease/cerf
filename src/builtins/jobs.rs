@@ -2,9 +2,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "jobs",
+    name: "job.list",
     description: "Display status of jobs.",
-    usage: "jobs\n\nLists the active jobs. JOBSpec restricts output to that job.",
+    usage: "job.list\n\nLists the active jobs. JOBSpec restricts output to that job.",
     run: jobs_runner,
 };
 

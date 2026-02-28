@@ -2,9 +2,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "echo",
+    name: "io.echo",
     description: "Write arguments to the standard output.",
-    usage: "echo [arg ...]",
+    usage: "io.echo [arg ...]",
     run,
 };
 
