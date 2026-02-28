@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "type",
+    name: "sys.type",
     description: "Display information about command type.",
-    usage: "type [-afptP] name [name ...]\n\nDisplay information about command type.",
+    usage: "sys.type [-afptP] name [name ...]\n\nDisplay information about command type.",
     run: type_runner,
 };
 
@@ -22,10 +22,7 @@ pub fn type_of(cmd: &str, aliases: &HashMap<String, String>) -> String {
     }
 
     // 2. Shell builtins.
-    let builtins = ["alias", "unalias", "cd", "pwd", "exit", "clear", "echo", "type", "export", 
-                    "unset", "source", ".", "history", "pushd", "popd", "dirs", "exec", "read", 
-                    "true", "false", "test", "[", "set", "kill", "jobs", "fg", "bg", "wait"];
-    if builtins.contains(&cmd) {
+    if crate::builtins::registry::find_command(cmd).is_some() {
         return format!("{} is a shell builtin", cmd);
     }
 

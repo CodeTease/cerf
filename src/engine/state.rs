@@ -98,7 +98,7 @@ impl ShellState {
         let mut state = ShellState {
             previous_dir: None,
             dir_stack: Vec::new(),
-            aliases: HashMap::new(),
+            aliases: init_default_aliases(),
             variables,
             set_options: HashSet::new(),
             history: Vec::new(),
@@ -212,4 +212,46 @@ fn init_env_vars() -> HashMap<String, String> {
     }
 
     vars
+}
+
+/// Initialize the default aliases for backward POSIX compatibility with renamed `<type>.<action>` builtins.
+fn init_default_aliases() -> HashMap<String, String> {
+    let mut aliases = HashMap::new();
+    let mappings = [
+        ("cd", "dir.cd"),
+        ("pwd", "dir.pwd"),
+        ("pushd", "dir.pushd"),
+        ("popd", "dir.popd"),
+        ("dirs", "dir.dirs"),
+        ("jobs", "job.list"),
+        ("fg", "job.fg"),
+        ("bg", "job.bg"),
+        ("wait", "job.wait"),
+        ("kill", "job.kill"),
+        ("tether", "job.tether"),
+        ("untether", "job.untether"),
+        ("export", "env.export"),
+        ("unset", "env.unset"),
+        ("set", "env.set"),
+        ("source", "env.source"),
+        (".", "env.source"),
+        ("alias", "alias.set"),
+        ("unalias", "alias.unset"),
+        ("exit", "sys.exit"),
+        ("clear", "sys.clear"),
+        ("exec", "sys.exec"),
+        ("history", "sys.history"),
+        ("help", "sys.help"),
+        ("type", "sys.type"),
+        ("echo", "io.echo"),
+        ("read", "io.read"),
+        ("true", "test.true"),
+        ("false", "test.false"),
+        ("test", "test.check"),
+        ("[", "test.check"),
+    ];
+    for (name, target) in mappings {
+        aliases.insert(name.to_string(), target.to_string());
+    }
+    aliases
 }

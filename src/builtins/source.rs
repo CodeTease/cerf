@@ -8,18 +8,12 @@ use crate::builtins::registry::CommandInfo;
 use crate::parser;
 
 pub const COMMAND_INFO_SOURCE: CommandInfo = CommandInfo {
-    name: "source",
+    name: "env.source",
     description: "Execute commands from a file in the current shell.",
-    usage: "source filename [arguments]\n\nExecute commands from a file in the current shell.",
+    usage: "env.source filename [arguments]\n\nExecute commands from a file in the current shell.",
     run,
 };
 
-pub const COMMAND_INFO_DOT: CommandInfo = CommandInfo {
-    name: ".",
-    description: "Execute commands from a file in the current shell.",
-    usage: ". filename [arguments]\n\nExecute commands from a file in the current shell.",
-    run,
-};
 
 /// Maximum nesting depth for `source` / `.` to prevent infinite loops
 /// (e.g. `~/.cerfrc` sourcing itself).

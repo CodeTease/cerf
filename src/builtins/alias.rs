@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "alias",
+    name: "alias.set",
     description: "Define or display aliases.",
-    usage: "alias [name[=value] ... ]\n\nAlias with no arguments or with the -p option prints the list of aliases in the form alias NAME=VALUE on standard output. Otherwise, an alias is defined for each NAME whose VALUE is given.",
+    usage: "alias.set [name[=value] ... ]\n\nAlias with no arguments or with the -p option prints the list of aliases in the form alias NAME=VALUE on standard output. Otherwise, an alias is defined for each NAME whose VALUE is given.",
     run: alias_runner,
 };
 
@@ -38,7 +38,9 @@ pub fn run(args: &[String], aliases: &mut HashMap<String, String>) {
             let name = arg[..eq_pos].to_string();
             let value = arg[eq_pos + 1..].to_string();
             if name.is_empty() {
-                eprintln!("cerf: alias: '{}': invalid alias name", arg);
+                eprintln!("cerf: alias.set: '{}': invalid alias name", arg);
+            } else if crate::builtins::registry::find_command(&name).is_some() {
+                eprintln!("cerf: alias.set: '{}': cannot override builtin command", name);
             } else {
                 aliases.insert(name, value);
             }
@@ -46,7 +48,7 @@ pub fn run(args: &[String], aliases: &mut HashMap<String, String>) {
             // Query: print the existing definition or report an error.
             match aliases.get(arg.as_str()) {
                 Some(value) => println!("alias {}='{}'", arg, value),
-                None => eprintln!("cerf: alias: {}: not found", arg),
+                None => eprintln!("cerf: alias.set: {}: not found", arg),
             }
         }
     }

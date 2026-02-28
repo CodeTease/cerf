@@ -4,9 +4,9 @@ use crate::builtins::registry::{CommandInfo, BUILTINS, find_command};
 use crate::engine::path::find_executable;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "help",
+    name: "sys.help",
     description: "Display information about builtin commands.",
-    usage: "help [pattern ...]\n\nDisplay information about builtin commands. If PATTERN is specified,\ngives detailed help on all commands matching PATTERN, otherwise prints\na list of the builtins and their descriptions.",
+    usage: "sys.help [pattern ...]\n\nDisplay information about builtin commands. If PATTERN is specified,\ngives detailed help on all commands matching PATTERN, otherwise prints\na list of the builtins and their descriptions.",
     run: help_runner,
 };
 

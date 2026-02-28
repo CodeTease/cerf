@@ -3,9 +3,9 @@ use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
-    name: "read",
+    name: "io.read",
     description: "Read a line from the standard input and split it into fields.",
-    usage: "read [-prs] [-a array] [-d delim] [-i text] [-n nchars] [-N nchars] [-t timeout] [-u fd] [name ...]\n\nRead a line from the standard input and split it into fields.",
+    usage: "io.read [-prs] [-a array] [-d delim] [-i text] [-n nchars] [-N nchars] [-t timeout] [-u fd] [name ...]\n\nRead a line from the standard input and split it into fields.",
     run: read_runner,
 };
 
