@@ -113,6 +113,7 @@ pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::ast::arg_values;
 
     // ── single-command tests ───────────────────────────────────────────────
 
@@ -321,7 +322,7 @@ mod tests {
     #[test]
     fn test_parse_line_expands_var_in_arg() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_DIR".to_string(), "/tmp/test".to_string());
+        vars.insert("CERF_DIR".to_string(), crate::engine::state::Variable::new_string("/tmp/test".to_string()));
         let cmd = parse_line_with_vars("cd $CERF_DIR", &vars).unwrap();
         assert_eq!(cmd.name.as_deref(), Some("cd"));
         assert_eq!(arg_values(&cmd.args), vec!["/tmp/test"]);
@@ -330,7 +331,7 @@ mod tests {
     #[test]
     fn test_parse_line_expands_var_in_quoted_arg() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_MSG".to_string(), "hello world".to_string());
+        vars.insert("CERF_MSG".to_string(), crate::engine::state::Variable::new_string("hello world".to_string()));
         let cmd = parse_line_with_vars("echo \"$CERF_MSG\"", &vars).unwrap();
         assert_eq!(cmd.name.as_deref(), Some("echo"));
         assert_eq!(arg_values(&cmd.args), vec!["hello world"]);
@@ -339,7 +340,7 @@ mod tests {
     #[test]
     fn test_parse_line_expands_path_var() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("PATH".to_string(), "some_path".to_string());
+        vars.insert("PATH".to_string(), crate::engine::state::Variable::new_string("some_path".to_string()));
         let expanded = expand_vars("echo $PATH", &vars);
         assert!(expanded.contains("some_path"), "expanded line should contain the PATH value");
     }

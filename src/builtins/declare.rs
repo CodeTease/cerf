@@ -1,6 +1,5 @@
 use crate::engine::state::{ExecutionResult, ShellState, Variable, VarValue};
 use crate::builtins::registry::CommandInfo;
-use std::collections::HashMap;
 
 pub const COMMAND_INFO_DECLARE: CommandInfo = CommandInfo {
     name: "env.declare",
@@ -57,7 +56,7 @@ pub fn run(args: &[String], state: &mut ShellState, local_scope: bool) -> i32 {
         }
         
         // If not creating new, inherit old
-        let mut old_var = state.get_var(name).cloned();
+        let old_var = state.get_var(name).cloned();
         
         let mut var = old_var.unwrap_or_else(|| Variable::new_string(String::new()));
         

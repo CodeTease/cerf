@@ -76,7 +76,7 @@ fn main() -> rustyline::Result<()> {
         
         std::thread::spawn(move || {
             use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
-            use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS};
+            use windows_sys::Win32::System::SystemServices::JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO;
             
             loop {
                 let mut num_bytes = 0;

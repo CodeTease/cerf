@@ -1,6 +1,5 @@
 use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
-use crate::engine::job_control::wait_for_job;
 
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
@@ -40,7 +39,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                 let pgid = state.jobs[&id].pgid;
                 let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(-(pgid as i32)), nix::sys::signal::Signal::SIGCONT);
                 crate::engine::job_control::set_current_job(state, id);
-                return wait_for_job(id, state, true);
+                return crate::engine::job_control::wait_for_job(id, state, true);
             }
             #[cfg(windows)]
             {

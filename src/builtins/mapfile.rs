@@ -1,4 +1,4 @@
-use crate::engine::state::{ExecutionResult, ShellState, Variable, VarValue};
+use crate::engine::state::{ExecutionResult, ShellState, Variable};
 use crate::builtins::registry::CommandInfo;
 use std::io::{self, BufRead};
 
