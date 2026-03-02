@@ -30,10 +30,12 @@ pub fn set_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, 
 pub fn run(args: &[String], state: &mut ShellState) -> i32 {
     // No arguments: print all shell variables, sorted.
     if args.is_empty() {
-        let mut pairs: Vec<(&String, &String)> = state.variables.iter().collect();
+        let mut pairs: Vec<(&String, String)> = state.variables.iter()
+            .map(|(k, v)| (k, v.value.as_string()))
+            .collect();
         pairs.sort_by_key(|(k, _)| (*k).clone());
         for (name, value) in pairs {
-            println!("{}={}", name, shell_quote(value));
+            println!("{}={}", name, shell_quote(&value));
         }
         return 0;
     }
@@ -202,13 +204,9 @@ fn set_positional_params(params: &[String], state: &mut ShellState) {
 
     // Set new positional parameters.
     for (i, val) in params.iter().enumerate() {
-        state
-            .variables
-            .insert((i + 1).to_string(), val.clone());
+        state.set_var(&(i + 1).to_string(), crate::engine::state::Variable::new_string(val.clone()));
     }
-    state
-        .variables
-        .insert("#".to_string(), params.len().to_string());
+    state.set_var("#", crate::engine::state::Variable::new_string(params.len().to_string()));
 }
 
 /// Quote a value for shell display (minimal quoting).

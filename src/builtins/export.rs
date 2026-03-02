@@ -20,7 +20,7 @@ pub fn export_runner(args: &[String], state: &mut ShellState) -> (ExecutionResul
 /// - `export`             → print all environment variables
 /// - `export name=value`  → set variable in both shell and environment
 /// - `export name`        → promote existing shell variable to environment
-pub fn run(args: &[String], variables: &mut HashMap<String, String>) {
+pub fn run(args: &[String], variables: &mut HashMap<String, crate::engine::state::Variable>) {
     if args.is_empty() {
         let mut pairs: Vec<(String, String)> = std::env::vars().collect();
         pairs.sort_by_key(|(k, _)| k.clone());
@@ -38,13 +38,13 @@ pub fn run(args: &[String], variables: &mut HashMap<String, String>) {
             if name.is_empty() {
                 eprintln!("cerf: export: '{}': not a valid identifier", arg);
             } else {
-                variables.insert(name.clone(), value.clone());
+                variables.insert(name.clone(), crate::engine::state::Variable::new_string(value.clone()));
                 unsafe { std::env::set_var(name, value); }
             }
         } else {
             // Export existing: promote existing shell variable to env
             if let Some(value) = variables.get(arg) {
-                unsafe { std::env::set_var(arg, value); }
+                unsafe { std::env::set_var(arg, value.value.as_string()); }
             } else {
                 // If not in shell variables but already in env, do nothing
                 // If not in either, bash usually does nothing or adds it to exported list but empty.

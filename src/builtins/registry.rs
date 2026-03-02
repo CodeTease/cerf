@@ -41,6 +41,16 @@ pub const BUILTINS: &[CommandInfo] = &[
     builtins::unalias::COMMAND_INFO,
     builtins::unset::COMMAND_INFO,
     builtins::wait::COMMAND_INFO,
+    builtins::declare::COMMAND_INFO_DECLARE,
+    builtins::local::COMMAND_INFO_LOCAL,
+    builtins::shift::COMMAND_INFO_SHIFT,
+    builtins::printf::COMMAND_INFO_PRINTF,
+    builtins::mapfile::COMMAND_INFO_MAPFILE,
+    builtins::eval::COMMAND_INFO_EVAL,
+    builtins::builtin_cmd::COMMAND_INFO_BUILTIN,
+    builtins::command_cmd::COMMAND_INFO_COMMAND,
+    builtins::ulimit::COMMAND_INFO_ULIMIT,
+    builtins::umask::COMMAND_INFO_UMASK,
 ];
 
 pub fn find_command(name: &str) -> Option<&'static CommandInfo> {
