@@ -3,6 +3,9 @@ name = "cerf"
 authors = ["CerfSh"]
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/cerfsh/cerf"
+homepage = "https://github.com/cerfsh/cerf"
+license = "Apache-2.0"
 
 [dependencies]
 dirs = "6.0.0"
@@ -15,3 +18,9 @@ nix = { version = "0.31.1", features = ["signal", "process", "term"] }
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_JobObjects", "Win32_Foundation", "Win32_System_Threading", "Win32_System_IO", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_System_SystemServices"] }
+
+[profile.release]
+strip = true
+opt-level = 3
+lto = true
+codegen-units = 1
