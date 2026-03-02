@@ -1,5 +1,6 @@
 use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::job_control::wait_for_job;
 
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
