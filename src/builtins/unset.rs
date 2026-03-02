@@ -18,7 +18,7 @@ pub fn unset_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult
 ///
 /// Behaviour:
 /// - `unset name …` → remove each named variable from shell and environment
-pub fn run(args: &[String], variables: &mut HashMap<String, String>) {
+pub fn run(args: &[String], variables: &mut HashMap<String, crate::engine::state::Variable>) {
     if args.is_empty() {
         return;
     }

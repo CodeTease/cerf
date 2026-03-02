@@ -15,7 +15,7 @@ use combinators::{parse_connector, parse_pipeline_expr};
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
-pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, String>) -> Option<Vec<CommandEntry>> {
+pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
@@ -90,7 +90,7 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, S
 }
 
 /// Backwards-compatible alias — kept so call-sites in main.rs don't break.
-pub fn parse_pipeline(input: &str, shell_vars: &std::collections::HashMap<String, String>) -> Option<Vec<CommandEntry>> {
+pub fn parse_pipeline(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
     parse_input(input, shell_vars)
 }
 
@@ -98,7 +98,7 @@ pub fn parse_line(input: &str) -> Option<ParsedCommand> {
     parse_line_with_vars(input, &std::collections::HashMap::new())
 }
 
-pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String, String>) -> Option<ParsedCommand> {
+pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<ParsedCommand> {
     parse_input(input, vars).and_then(|mut v| {
         if v.len() == 1 && v[0].pipeline.commands.len() == 1 {
             Some(v.remove(0).pipeline.commands.remove(0))

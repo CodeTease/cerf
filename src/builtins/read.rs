@@ -94,7 +94,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
     }
 
     let default_ifs = String::from(" \t\n");
-    let ifs = state.variables.get("IFS").cloned().unwrap_or(default_ifs);
+    let ifs = state.get_var_string("IFS").unwrap_or(default_ifs);
     let mut remaining = final_line.as_str();
 
     for (i, var_name) in var_names.iter().enumerate() {
@@ -129,7 +129,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
             }
         };
 
-        state.variables.insert(var_name.clone(), val.to_string());
+        state.set_var(var_name, crate::engine::state::Variable::new_string(val.to_string()));
         if std::env::var(var_name).is_ok() {
             unsafe { std::env::set_var(var_name, val.to_string()); }
         }

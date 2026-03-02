@@ -25,7 +25,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
     if cmd.name.is_none() {
         // Just assignments
         for (key, val) in &cmd.assignments {
-            state.variables.insert(key.clone(), val.clone());
+            state.set_var(key, crate::engine::state::Variable::new_string(val.clone()));
             // If already in env, update it there too
             if std::env::var(key).is_ok() {
                unsafe { std::env::set_var(key, val); }

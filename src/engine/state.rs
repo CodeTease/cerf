@@ -37,6 +37,49 @@ pub struct Job {
     pub reported_done: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum VarValue {
+    String(String),
+    Array(Vec<String>),
+}
+
+impl VarValue {
+    pub fn as_string(&self) -> String {
+        match self {
+            VarValue::String(s) => s.clone(),
+            VarValue::Array(a) => a.join(" "),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    pub value: VarValue,
+    pub readonly: bool,
+    pub integer: bool,
+    pub exported: bool,
+}
+
+impl Variable {
+    pub fn new_string(val: String) -> Self {
+        Self {
+            value: VarValue::String(val),
+            readonly: false,
+            integer: false,
+            exported: false,
+        }
+    }
+    
+    pub fn new_array(val: Vec<String>) -> Self {
+        Self {
+            value: VarValue::Array(val),
+            readonly: false,
+            integer: false,
+            exported: false,
+        }
+    }
+}
+
 impl Job {
     pub fn is_stopped(&self) -> bool {
         let all_suspended = self.processes.iter().all(|p| matches!(p.state, JobState::Stopped | JobState::Done(_)));
@@ -69,8 +112,12 @@ pub struct ShellState {
     pub dir_stack: Vec<PathBuf>,
     /// All currently-defined aliases. Maps alias name → replacement string.
     pub aliases: HashMap<String, String>,
-    /// All currently-defined shell variables.
-    pub variables: HashMap<String, String>,
+    /// Global shell variables.
+    pub variables: HashMap<String, Variable>,
+    /// Local variable scopes.
+    pub scopes: Vec<HashMap<String, Variable>>,
+    /// Positional arguments ($1, $2, etc.). First element is $1.
+    pub positional_args: Vec<String>,
     /// Shell options enabled via `set -o` / `set -e` etc.
     pub set_options: HashSet<String>,
     /// Command history (persisted to `~/.cerf_history`).
@@ -93,13 +140,18 @@ pub struct ShellState {
 
 impl ShellState {
     pub fn new() -> Self {
-        let variables = init_env_vars();
+        let mut variables = HashMap::new();
+        for (k, v) in init_env_vars() {
+            variables.insert(k, Variable::new_string(v));
+        }
 
         let mut state = ShellState {
             previous_dir: None,
             dir_stack: Vec::new(),
             aliases: init_default_aliases(),
             variables,
+            scopes: Vec::new(),
+            positional_args: Vec::new(),
             set_options: HashSet::new(),
             history: Vec::new(),
             jobs: HashMap::new(),
@@ -124,6 +176,86 @@ impl ShellState {
         };
         state.load_history();
         state
+    }
+
+    /// Set a variable in the current scope.
+    pub fn set_var(&mut self, name: &str, value: Variable) {
+        if self.scopes.is_empty() {
+            self.variables.insert(name.to_string(), value);
+        } else {
+            let last_idx = self.scopes.len() - 1;
+            // Only insert into global if it was already global and not local, 
+            // but typical bash behavior is to create local if requested by `local`, 
+            // otherwise assignment modifies existing or creates global.
+            // For now, simple approach: set in current scope. 
+            // If we are setting a variable and it's not local, usually 
+            // we'd walk up scopes. But standard simple approach:
+            
+            // Check if it exists in local scope already
+            if self.scopes[last_idx].contains_key(name) {
+                self.scopes[last_idx].insert(name.to_string(), value);
+            } else {
+                 // Bash normally sets variables globally if they aren't declared local.
+                 // We will need a more complex `set_var` to replicate that strictly,
+                 // but for now, let's just insert globally unless we're using `local`.
+                 // Actually, standard behavior: modify where found, else create global.
+                 let mut found_scope = None;
+                 for (i, scope) in self.scopes.iter().enumerate().rev() {
+                     if scope.contains_key(name) {
+                         found_scope = Some(i);
+                         break;
+                     }
+                 }
+                 if let Some(i) = found_scope {
+                     self.scopes[i].insert(name.to_string(), value);
+                 } else {
+                     self.variables.insert(name.to_string(), value);
+                 }
+            }
+        }
+    }
+
+    /// Set a variable strictly in the current local scope (for `env.local`).
+    pub fn set_local_var(&mut self, name: &str, value: Variable) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), value);
+        } else {
+            self.variables.insert(name.to_string(), value);
+        }
+    }
+
+    /// Get a variable looking up through scopes.
+    pub fn get_var(&self, name: &str) -> Option<&Variable> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(name) {
+                return Some(v);
+            }
+        }
+        self.variables.get(name)
+    }
+
+    pub fn get_var_mut(&mut self, name: &str) -> Option<&mut Variable> {
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.contains_key(name) {
+                return scope.get_mut(name);
+            }
+        }
+        self.variables.get_mut(name)
+    }
+
+    /// Get a variable's string value.
+    pub fn get_var_string(&self, name: &str) -> Option<String> {
+        self.get_var(name).map(|v| v.value.as_string())
+    }
+
+    /// Push a new local scope.
+    pub fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    /// Pop the current local scope.
+    pub fn pop_scope(&mut self) {
+        self.scopes.pop();
     }
 
     /// Load history entries from `~/.cerf_history` (if it exists).
@@ -245,6 +377,18 @@ fn init_default_aliases() -> HashMap<String, String> {
         ("type", "sys.type"),
         ("echo", "io.echo"),
         ("read", "io.read"),
+        ("printf", "io.printf"),
+        ("mapfile", "io.mapfile"),
+        ("readarray", "io.mapfile"),
+        ("eval", "sys.eval"),
+        ("command", "sys.command"),
+        ("builtin", "sys.builtin"),
+        ("ulimit", "sys.ulimit"),
+        ("umask", "sys.umask"),
+        ("declare", "env.declare"),
+        ("typeset", "env.declare"),
+        ("local", "env.local"),
+        ("shift", "env.shift"),
         ("true", "test.true"),
         ("false", "test.false"),
         ("test", "test.check"),
