@@ -26,11 +26,68 @@ pub fn arg_values(args: &[Arg]) -> Vec<&str> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ParsedCommand {
+pub struct SimpleCommand {
     pub assignments: Vec<(String, String)>,
     pub name: Option<String>,
     pub args: Vec<Arg>,
     pub redirects: Vec<Redirect>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum CommandNode {
+    Simple(SimpleCommand),
+    If {
+        branches: Vec<(Vec<CommandEntry>, Vec<CommandEntry>)>,
+        else_branch: Option<Vec<CommandEntry>>,
+    },
+    FuncDecl {
+        name: String,
+        body: Vec<CommandEntry>,
+    },
+}
+
+impl CommandNode {
+    pub fn name(&self) -> Option<&String> {
+        match self {
+            Self::Simple(s) => s.name.as_ref(),
+            _ => None,
+        }
+    }
+    
+    pub fn name_mut(&mut self) -> Option<&mut String> {
+        match self {
+            Self::Simple(s) => s.name.as_mut(),
+            _ => None,
+        }
+    }
+
+    pub fn args(&self) -> &[Arg] {
+        match self {
+            Self::Simple(s) => &s.args,
+            _ => &[],
+        }
+    }
+
+    pub fn args_mut(&mut self) -> Option<&mut Vec<Arg>> {
+        match self {
+            Self::Simple(s) => Some(&mut s.args),
+            _ => None,
+        }
+    }
+
+    pub fn redirects(&self) -> &[Redirect] {
+        match self {
+            Self::Simple(s) => &s.redirects,
+            _ => &[],
+        }
+    }
+
+    pub fn assignments(&self) -> &[(String, String)] {
+        match self {
+            Self::Simple(s) => &s.assignments,
+            _ => &[],
+        }
+    }
 }
 
 /// I/O redirection attached to a single command.
@@ -53,7 +110,7 @@ pub struct Redirect {
 /// A pipeline is one or more commands connected by `|`.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Pipeline {
-    pub commands: Vec<ParsedCommand>, // length ≥ 1
+    pub commands: Vec<CommandNode>, // length ≥ 1
     pub negated: bool,
     pub background: bool,
 }

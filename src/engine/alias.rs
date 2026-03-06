@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::{Arg, ParsedCommand};
+use crate::parser::{Arg, CommandNode};
 
 /// Expand aliases on a `ParsedCommand` in-place (bash-style, one level).
 ///
@@ -11,29 +11,30 @@ use crate::parser::{Arg, ParsedCommand};
 /// existing args.
 ///
 /// Returns `true` when an expansion happened.
-pub fn expand_alias(cmd: &mut ParsedCommand, aliases: &HashMap<String, String>) -> bool {
-    let name = match cmd.name.as_ref() {
+pub fn expand_alias(cmd: &mut CommandNode, aliases: &HashMap<String, String>) -> bool {
+    // Only simple commands are aliased
+    let simple = match cmd {
+        CommandNode::Simple(s) => s,
+        _ => return false,
+    };
+    
+    let name = match simple.name.as_ref() {
         Some(n) => n,
         None => return false,
     };
     if let Some(value) = aliases.get(name) {
         let value = value.clone();
-        // Tokenise the alias value with a simple whitespace split that
-        // respects single-quoted segments (good enough for shell aliases).
         let tokens = shell_split(&value);
         if tokens.is_empty() {
             return false;
         }
-        // The first token is the new command name.
-        cmd.name = Some(tokens[0].clone());
-        // Any remaining alias tokens are prepended to the original args.
-        // Alias-produced tokens are treated as unquoted (subject to glob).
+        simple.name = Some(tokens[0].clone());
         let mut new_args: Vec<Arg> = tokens[1..]
             .iter()
             .map(|t| Arg::plain(t))
             .collect();
-        new_args.extend(cmd.args.drain(..));
-        cmd.args = new_args;
+        new_args.extend(simple.args.drain(..));
+        simple.args = new_args;
         return true;
     }
     false

@@ -275,10 +275,10 @@ pub fn update_jobs(state: &mut ShellState) {
 pub fn format_command(pipeline: &crate::parser::Pipeline) -> String {
     pipeline.commands.iter().map(|c| {
         let mut parts = vec![];
-        if let Some(n) = &c.name {
+        if let Some(n) = c.name() {
             parts.push(n.clone());
         }
-        parts.extend(c.args.iter().map(|a| a.value.clone()));
+        parts.extend(c.args().iter().map(|a| a.value.clone()));
         parts.join(" ")
     }).collect::<Vec<_>>().join(" | ") + if pipeline.background { " &" } else { "" }
 }

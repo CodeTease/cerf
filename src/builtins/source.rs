@@ -68,12 +68,13 @@ pub fn run(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
 
         if let Some(entries) = parser::parse_pipeline(trimmed, &state.variables) {
             match execute_list(entries, state) {
-                ExecutionResult::Exit => {
+                (ExecutionResult::Exit, code) => {
                     last_result = ExecutionResult::Exit;
+                    last_code = code;
                     break;
                 }
-                ExecutionResult::KeepRunning => {
-                    last_code = 0;
+                (ExecutionResult::KeepRunning, code) => {
+                    last_code = code;
                 }
             }
         }

@@ -116,6 +116,8 @@ pub struct ShellState {
     pub variables: HashMap<String, Variable>,
     /// Local variable scopes.
     pub scopes: Vec<HashMap<String, Variable>>,
+    /// Defined shell functions.
+    pub functions: HashMap<String, Vec<crate::parser::CommandEntry>>,
     /// Positional arguments ($1, $2, etc.). First element is $1.
     pub positional_args: Vec<String>,
     /// Shell options enabled via `set -o` / `set -e` etc.
@@ -151,6 +153,7 @@ impl ShellState {
             aliases: init_default_aliases(),
             variables,
             scopes: Vec::new(),
+            functions: HashMap::new(),
             positional_args: Vec::new(),
             set_options: HashSet::new(),
             history: Vec::new(),

@@ -57,7 +57,7 @@ fn main() -> rustyline::Result<()> {
     if args.len() >= 3 && args[1] == "-c" {
         let input = &args[2];
         if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
-            engine::execute_list(entries, &mut state);
+            let _ = engine::execute_list(entries, &mut state);
         }
         return Ok(());
     }
@@ -144,8 +144,8 @@ fn main() -> rustyline::Result<()> {
 
                 if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
                     match engine::execute_list(entries, &mut state) {
-                        engine::ExecutionResult::Exit => break,
-                        engine::ExecutionResult::KeepRunning => {},
+                        (engine::ExecutionResult::Exit, _) => break,
+                        (engine::ExecutionResult::KeepRunning, _) => {},
                     }
                 }
             },

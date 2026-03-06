@@ -19,7 +19,11 @@ use super::glob::expand_globs;
 /// Execute one simple command with optional redirections.
 /// Returns `(ExecutionResult, exit_code)`.
 fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult, i32) {
-    let cmd = &pipeline.commands[0];
+    let cmd_node = &pipeline.commands[0];
+    let cmd = match cmd_node {
+        crate::parser::CommandNode::Simple(s) => s,
+        _ => return (ExecutionResult::KeepRunning, 0), // handled in execute()
+    };
     let (stdin_redir, stdout_redir) = resolve_redirects(&cmd.redirects);
 
     if cmd.name.is_none() {
@@ -295,13 +299,54 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
     // Single-command pipeline — just run the command directly (supports builtins).
     if cmds.len() == 1 {
-        let (res, code) = execute_simple(&pipeline, state);
-        let final_code = if pipeline.negated {
-            if code == 0 { 1 } else { 0 }
-        } else {
-            code
-        };
-        return (res, final_code);
+        match &cmds[0] {
+            crate::parser::CommandNode::If { branches, else_branch } => {
+                let mut final_code = 0;
+                let mut executed = false;
+                for (cond, body) in branches {
+                    let (res, cond_code) = execute_list(cond.clone(), state);
+                    if let ExecutionResult::Exit = res { return (res, cond_code); }
+                    if cond_code == 0 {
+                        let (res, body_code) = execute_list(body.clone(), state);
+                        if let ExecutionResult::Exit = res { return (res, body_code); }
+                        final_code = body_code;
+                        executed = true;
+                        break;
+                    }
+                }
+                if !executed {
+                    if let Some(body) = else_branch {
+                        let (res, body_code) = execute_list(body.clone(), state);
+                        if let ExecutionResult::Exit = res { return (res, body_code); }
+                        final_code = body_code;
+                    }
+                }
+                let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
+                return (ExecutionResult::KeepRunning, code);
+            }
+            crate::parser::CommandNode::FuncDecl { name, body } => {
+                state.functions.insert(name.clone(), body.clone());
+                return (ExecutionResult::KeepRunning, 0);
+            }
+            crate::parser::CommandNode::Simple(cmd) => {
+                // If this is a defined function, execute it
+                if let Some(name) = &cmd.name {
+                    if let Some(func_body) = state.functions.get(name).cloned() {
+                        let (res, code) = execute_list(func_body, state);
+                        let final_code = if pipeline.negated { if code == 0 { 1 } else { 0 } } else { code };
+                        return (res, final_code);
+                    }
+                }
+
+                let (res, code) = execute_simple(&pipeline, state);
+                let final_code = if pipeline.negated {
+                    if code == 0 { 1 } else { 0 }
+                } else {
+                    code
+                };
+                return (res, final_code);
+            }
+        }
     }
 
     // Multi-command pipeline: fork external processes connected by pipes.
@@ -340,7 +385,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     };
 
     for (i, cmd) in cmds.iter().enumerate() {
-        let name = match cmd.name.as_ref() {
+        let name = match cmd.name() {
             Some(n) => n,
             None => {
                 continue;
@@ -360,7 +405,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         let resolved = find_executable(name).unwrap_or_else(|| expand_home(name));
 
         // Expand globs on the argument list.
-        let args = expand_globs(&cmd.args);
+        let args = expand_globs(cmd.args());
 
         #[cfg(windows)]
         let mut command = {
@@ -381,11 +426,11 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         let mut command = Command::new(&resolved);
 
         command.args(&args);
-        command.envs(cmd.assignments.iter().map(|(k, v)| (k, v)));
+        command.envs(cmd.assignments().iter().map(|(k, v)| (k, v)));
 
         // Stdin: first command may have < redirect, others get previous pipe
         if i == 0 {
-            let (stdin_redir, _) = resolve_redirects(&cmd.redirects);
+            let (stdin_redir, _) = resolve_redirects(cmd.redirects());
             if let Some(redir) = stdin_redir {
                 match open_stdin_redirect(redir) {
                     Ok(f) => { command.stdin(Stdio::from(f)); }
@@ -407,7 +452,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
         // Stdout: last command may have > or >> redirect, others pipe
         if i == last_idx {
-            let (_, stdout_redir) = resolve_redirects(&cmd.redirects);
+            let (_, stdout_redir) = resolve_redirects(cmd.redirects());
             if let Some(redir) = stdout_redir {
                 match open_stdout_redirect(redir) {
                     Ok(f) => { command.stdout(Stdio::from(f)); }
@@ -559,7 +604,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 ///              code `0` (success).
 /// - **`||`** — run the next pipeline only if the previous returned a
 ///              non-zero exit code (failure).
-pub fn execute_list(entries: Vec<CommandEntry>, state: &mut ShellState) -> ExecutionResult {
+pub fn execute_list(entries: Vec<CommandEntry>, state: &mut ShellState) -> (ExecutionResult, i32) {
     let mut last_code: i32 = 0;
 
     for entry in entries {
@@ -581,9 +626,9 @@ pub fn execute_list(entries: Vec<CommandEntry>, state: &mut ShellState) -> Execu
         last_code = code;
 
         if let ExecutionResult::Exit = result {
-            return ExecutionResult::Exit;
+            return (ExecutionResult::Exit, last_code);
         }
     }
 
-    ExecutionResult::KeepRunning
+    (ExecutionResult::KeepRunning, last_code)
 }

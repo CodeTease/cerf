@@ -4,10 +4,10 @@ mod expand;
 
 // Re-export the public surface so that `crate::parser::*` keeps working
 // for all existing callers (engine.rs, main.rs, etc.).
-pub use ast::{Arg, CommandEntry, Connector, ParsedCommand, Pipeline, Redirect, RedirectKind};
+pub use ast::{Arg, CommandEntry, CommandNode, Connector, Pipeline, Redirect, RedirectKind};
 pub use expand::expand_vars;
 
-use combinators::{parse_connector, parse_pipeline_expr};
+
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -25,80 +25,29 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, c
     let expanded = expand_vars(input, shell_vars);
     let s = expanded.trim();
 
-    let mut entries: Vec<CommandEntry> = Vec::new();
-    let mut rest = s;
-
-    // Parse the first pipeline (no leading connector).
-    let (after_first, first_pipeline) = match parse_pipeline_expr(rest) {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-    rest = after_first;
-
-    let mut current_pipeline = first_pipeline;
-    let mut current_connector = None;
-
-    loop {
-        // Look for trailing & or connector for current pipeline
-        if rest.trim().is_empty() {
-            entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
-            break;
-        }
-
-        let (after_conn, conn) = match parse_connector(rest) {
-            Ok(v) => v,
-            Err(_) => {
-                entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
-                break;
+    match combinators::parse_command_list(s) {
+        Ok((_, entries)) => {
+            if entries.is_empty() {
+                None
+            } else {
+                Some(entries)
             }
-        };
-
-        if conn == Connector::Amp {
-            current_pipeline.background = true;
-            entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
-            rest = after_conn;
-            
-            if rest.trim().is_empty() {
-                break;
-            }
-            
-            // Following a background command, the next sequence starts without a dependency connector,
-            // (or rather, its dependency is satisfied by previous immediately).
-            let (after_next, next_pipe) = match parse_pipeline_expr(rest) {
-                Ok(v) => v,
-                Err(_) => break,
-            };
-            current_pipeline = next_pipe;
-            current_connector = None;
-            rest = after_next;
-            continue;
         }
-
-        // Output current pipeline and move to next
-        entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
-        
-        let (after_next, next_pipe) = match parse_pipeline_expr(after_conn) {
-            Ok(v) => v,
-            Err(_) => break,
-        };
-        current_pipeline = next_pipe;
-        current_connector = Some(conn);
-        rest = after_next;
+        Err(_) => None,
     }
-
-    if entries.is_empty() { None } else { Some(entries) }
 }
+
 
 /// Backwards-compatible alias — kept so call-sites in main.rs don't break.
 pub fn parse_pipeline(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
     parse_input(input, shell_vars)
 }
 
-pub fn parse_line(input: &str) -> Option<ParsedCommand> {
+pub fn parse_line(input: &str) -> Option<CommandNode> {
     parse_line_with_vars(input, &std::collections::HashMap::new())
 }
 
-pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<ParsedCommand> {
+pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<CommandNode> {
     parse_input(input, vars).and_then(|mut v| {
         if v.len() == 1 && v[0].pipeline.commands.len() == 1 {
             Some(v.remove(0).pipeline.commands.remove(0))
@@ -120,29 +69,29 @@ mod tests {
     #[test]
     fn test_parse_simple() {
         let cmd = parse_line("ls -la").unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("ls"));
-        assert_eq!(arg_values(&cmd.args), vec!["-la"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(arg_values(cmd.args()), vec!["-la"]);
     }
 
     #[test]
     fn test_parse_quoted() {
         let cmd = parse_line("echo \"hello world\"").unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("echo"));
-        assert_eq!(arg_values(&cmd.args), vec!["hello world"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(arg_values(cmd.args()), vec!["hello world"]);
     }
 
     #[test]
     fn test_parse_mixed() {
         let cmd = parse_line("cd \"My Documents\" backup").unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("cd"));
-        assert_eq!(arg_values(&cmd.args), vec!["My Documents", "backup"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("cd"));
+        assert_eq!(arg_values(cmd.args()), vec!["My Documents", "backup"]);
     }
 
     #[test]
     fn test_extra_spaces() {
         let cmd = parse_line("  ls   -la  ").unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("ls"));
-        assert_eq!(arg_values(&cmd.args), vec!["-la"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(arg_values(cmd.args()), vec!["-la"]);
     }
 
     #[test]
@@ -165,9 +114,9 @@ mod tests {
         let entries = parse_pipeline("echo hello ; echo world", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("echo"));
+        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
         assert_eq!(entries[1].connector, Some(Connector::Semi));
-        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
+        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
     }
 
     #[test]
@@ -176,10 +125,10 @@ mod tests {
         let entries = parse_pipeline("make && make install", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("make"));
+        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("make"));
         assert_eq!(entries[1].connector, Some(Connector::And));
-        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("make"));
-        assert_eq!(arg_values(&entries[1].pipeline.commands[0].args), vec!["install"]);
+        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("make"));
+        assert_eq!(arg_values(entries[1].pipeline.commands[0].args()), vec!["install"]);
     }
 
     #[test]
@@ -187,10 +136,10 @@ mod tests {
         let vars = std::collections::HashMap::new();
         let entries = parse_pipeline("cat file.txt || echo missing", &vars).unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("cat"));
+        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("cat"));
         assert_eq!(entries[1].connector, Some(Connector::Or));
-        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
-        assert_eq!(arg_values(&entries[1].pipeline.commands[0].args), vec!["missing"]);
+        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(arg_values(entries[1].pipeline.commands[0].args()), vec!["missing"]);
     }
 
     #[test]
@@ -212,9 +161,9 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
-        assert_eq!(pipeline.commands[0].name.as_deref(), Some("ls"));
-        assert_eq!(pipeline.commands[1].name.as_deref(), Some("grep"));
-        assert_eq!(arg_values(&pipeline.commands[1].args), vec!["foo"]);
+        assert_eq!(pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(pipeline.commands[1].name().map(|n| n.as_str()), Some("grep"));
+        assert_eq!(arg_values(pipeline.commands[1].args()), vec!["foo"]);
     }
 
     #[test]
@@ -224,9 +173,9 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 3);
-        assert_eq!(pipeline.commands[0].name.as_deref(), Some("cat"));
-        assert_eq!(pipeline.commands[1].name.as_deref(), Some("sort"));
-        assert_eq!(pipeline.commands[2].name.as_deref(), Some("uniq"));
+        assert_eq!(pipeline.commands[0].name().map(|n| n.as_str()), Some("cat"));
+        assert_eq!(pipeline.commands[1].name().map(|n| n.as_str()), Some("sort"));
+        assert_eq!(pipeline.commands[2].name().map(|n| n.as_str()), Some("uniq"));
     }
 
     #[test]
@@ -235,10 +184,10 @@ mod tests {
         let entries = parse_pipeline("! ls", &vars).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].pipeline.negated);
-        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
+        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
 
         let entries = parse_pipeline("!  ls -la", &vars).unwrap();
-        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
+        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
         assert!(entries[0].pipeline.negated);
     }
 
@@ -258,12 +207,12 @@ mod tests {
         assert_eq!(entries.len(), 2);
         // First entry is a pipeline: ls | grep foo
         assert_eq!(entries[0].pipeline.commands.len(), 2);
-        assert_eq!(entries[0].pipeline.commands[0].name.as_deref(), Some("ls"));
-        assert_eq!(entries[0].pipeline.commands[1].name.as_deref(), Some("grep"));
+        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(entries[0].pipeline.commands[1].name().map(|n| n.as_str()), Some("grep"));
         // Second entry is a simple command: echo done
         assert_eq!(entries[1].connector, Some(Connector::And));
         assert_eq!(entries[1].pipeline.commands.len(), 1);
-        assert_eq!(entries[1].pipeline.commands[0].name.as_deref(), Some("echo"));
+        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
     }
 
     // ── redirection tests ─────────────────────────────────────────────────
@@ -273,11 +222,11 @@ mod tests {
         let vars = std::collections::HashMap::new();
         let entries = parse_pipeline("echo hi > out.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
-        assert_eq!(cmd.name.as_deref(), Some("echo"));
-        assert_eq!(arg_values(&cmd.args), vec!["hi"]);
-        assert_eq!(cmd.redirects.len(), 1);
-        assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutOverwrite);
-        assert_eq!(cmd.redirects[0].file, "out.txt");
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(arg_values(cmd.args()), vec!["hi"]);
+        assert_eq!(cmd.redirects().len(), 1);
+        assert_eq!(cmd.redirects()[0].kind, RedirectKind::StdoutOverwrite);
+        assert_eq!(cmd.redirects()[0].file, "out.txt");
     }
 
     #[test]
@@ -285,9 +234,9 @@ mod tests {
         let vars = std::collections::HashMap::new();
         let entries = parse_pipeline("echo hi >> out.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
-        assert_eq!(cmd.redirects.len(), 1);
-        assert_eq!(cmd.redirects[0].kind, RedirectKind::StdoutAppend);
-        assert_eq!(cmd.redirects[0].file, "out.txt");
+        assert_eq!(cmd.redirects().len(), 1);
+        assert_eq!(cmd.redirects()[0].kind, RedirectKind::StdoutAppend);
+        assert_eq!(cmd.redirects()[0].file, "out.txt");
     }
 
     #[test]
@@ -295,10 +244,10 @@ mod tests {
         let vars = std::collections::HashMap::new();
         let entries = parse_pipeline("sort < in.txt", &vars).unwrap();
         let cmd = &entries[0].pipeline.commands[0];
-        assert_eq!(cmd.name.as_deref(), Some("sort"));
-        assert_eq!(cmd.redirects.len(), 1);
-        assert_eq!(cmd.redirects[0].kind, RedirectKind::StdinFrom);
-        assert_eq!(cmd.redirects[0].file, "in.txt");
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("sort"));
+        assert_eq!(cmd.redirects().len(), 1);
+        assert_eq!(cmd.redirects()[0].kind, RedirectKind::StdinFrom);
+        assert_eq!(cmd.redirects()[0].file, "in.txt");
     }
 
     #[test]
@@ -308,13 +257,13 @@ mod tests {
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
         // First command: cat < in.txt
-        assert_eq!(pipeline.commands[0].name.as_deref(), Some("cat"));
-        assert_eq!(pipeline.commands[0].redirects.len(), 1);
-        assert_eq!(pipeline.commands[0].redirects[0].kind, RedirectKind::StdinFrom);
+        assert_eq!(pipeline.commands[0].name().map(|n| n.as_str()), Some("cat"));
+        assert_eq!(pipeline.commands[0].redirects().len(), 1);
+        assert_eq!(pipeline.commands[0].redirects()[0].kind, RedirectKind::StdinFrom);
         // Last command: sort > out.txt
-        assert_eq!(pipeline.commands[1].name.as_deref(), Some("sort"));
-        assert_eq!(pipeline.commands[1].redirects.len(), 1);
-        assert_eq!(pipeline.commands[1].redirects[0].kind, RedirectKind::StdoutOverwrite);
+        assert_eq!(pipeline.commands[1].name().map(|n| n.as_str()), Some("sort"));
+        assert_eq!(pipeline.commands[1].redirects().len(), 1);
+        assert_eq!(pipeline.commands[1].redirects()[0].kind, RedirectKind::StdoutOverwrite);
     }
 
     // ── integration: parse_pipeline with env expansion ────────────────────
@@ -324,8 +273,8 @@ mod tests {
         let mut vars = std::collections::HashMap::new();
         vars.insert("CERF_DIR".to_string(), crate::engine::state::Variable::new_string("/tmp/test".to_string()));
         let cmd = parse_line_with_vars("cd $CERF_DIR", &vars).unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("cd"));
-        assert_eq!(arg_values(&cmd.args), vec!["/tmp/test"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("cd"));
+        assert_eq!(arg_values(cmd.args()), vec!["/tmp/test"]);
     }
 
     #[test]
@@ -333,8 +282,8 @@ mod tests {
         let mut vars = std::collections::HashMap::new();
         vars.insert("CERF_MSG".to_string(), crate::engine::state::Variable::new_string("hello world".to_string()));
         let cmd = parse_line_with_vars("echo \"$CERF_MSG\"", &vars).unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("echo"));
-        assert_eq!(arg_values(&cmd.args), vec!["hello world"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(arg_values(cmd.args()), vec!["hello world"]);
     }
 
     #[test]
@@ -350,30 +299,68 @@ mod tests {
     #[test]
     fn test_parse_assignment_only() {
         let cmd = parse_line("FOO=bar").unwrap();
-        assert!(cmd.name.is_none());
-        assert_eq!(cmd.assignments, vec![("FOO".to_string(), "bar".to_string())]);
+        assert!(cmd.name().is_none());
+        assert_eq!(cmd.assignments(), &[("FOO".to_string(), "bar".to_string())]);
     }
 
     #[test]
     fn test_parse_multiple_assignments() {
         let cmd = parse_line("A=1 B=2 C=3").unwrap();
-        assert_eq!(cmd.assignments.len(), 3);
-        assert_eq!(cmd.assignments[0], ("A".to_string(), "1".to_string()));
-        assert_eq!(cmd.assignments[2], ("C".to_string(), "3".to_string()));
+        assert_eq!(cmd.assignments().len(), 3);
+        assert_eq!(cmd.assignments()[0], ("A".to_string(), "1".to_string()));
+        assert_eq!(cmd.assignments()[2], ("C".to_string(), "3".to_string()));
     }
 
     #[test]
     fn test_parse_assignment_with_command() {
         let cmd = parse_line("VAR=val ls -l").unwrap();
-        assert_eq!(cmd.name.as_deref(), Some("ls"));
-        assert_eq!(cmd.assignments, vec![("VAR".to_string(), "val".to_string())]);
-        assert_eq!(arg_values(&cmd.args), vec!["-l"]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(cmd.assignments(), &[("VAR".to_string(), "val".to_string())]);
+        assert_eq!(arg_values(cmd.args()), vec!["-l"]);
     }
 
     #[test]
     fn test_parse_assignment_quoted_value() {
         let cmd = parse_line("MSG=\"hello world\" echo").unwrap();
-        assert_eq!(cmd.assignments, vec![("MSG".to_string(), "hello world".to_string())]);
-        assert_eq!(cmd.name.as_deref(), Some("echo"));
+        assert_eq!(cmd.assignments(), &[("MSG".to_string(), "hello world".to_string())]);
+        assert_eq!(cmd.name().map(|n| n.as_str()), Some("echo"));
+    }
+
+    // ── control flow tests ──────────────────────────────────────────────────
+    
+    #[test]
+    fn test_parse_if_simple() {
+        let cmd = parse_line("if true { echo ok }").unwrap();
+        match cmd {
+            CommandNode::If { branches, else_branch } => {
+                assert_eq!(branches.len(), 1);
+                assert!(else_branch.is_none());
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_if_elif_else() {
+        let cmd = parse_line("if cmd1 { echo 1 } elif cmd2 { echo 2 } else { echo 3 }").unwrap();
+        match cmd {
+            CommandNode::If { branches, else_branch } => {
+                assert_eq!(branches.len(), 2);
+                assert!(else_branch.is_some());
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_func() {
+        let cmd = parse_line("func my_func { echo ok }").unwrap();
+        match cmd {
+            CommandNode::FuncDecl { name, body } => {
+                assert_eq!(name, "my_func");
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected FuncDecl node"),
+        }
     }
 }
