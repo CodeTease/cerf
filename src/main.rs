@@ -65,7 +65,10 @@ fn main() -> rustyline::Result<()> {
     // Source the user profile (~/.cerfrc) for interactive sessions.
     source_profile(&mut state);
 
-    let mut rl = DefaultEditor::new()?;
+    let config = rustyline::Config::builder()
+        .bracketed_paste(true)
+        .build();
+    let mut rl = DefaultEditor::with_config(config)?;
     let mut printer_opt = rl.create_external_printer().ok();
 
     #[cfg(windows)]
