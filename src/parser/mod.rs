@@ -11,12 +11,34 @@ pub use expand::expand_vars;
 
 // ── Public API ────────────────────────────────────────────────────────────
 
+pub fn join_continuations(input: &str) -> String {
+    let mut result = String::new();
+    let mut lines = input.lines().peekable();
+    while let Some(line) = lines.next() {
+        let mut current = line.to_string();
+        while current.trim_end().ends_with(',') && lines.peek().is_some() {
+            let trimmed = current.trim_end();
+            current = trimmed[..trimmed.len() - 1].to_string();
+            if let Some(next_line) = lines.next() {
+                current.push_str(next_line);
+            }
+        }
+        result.push_str(&current);
+        result.push('\n');
+    }
+    if input.ends_with('\n') && !result.ends_with('\n') {
+        result.push('\n');
+    }
+    result.trim_end_matches('\n').to_string()
+}
+
 /// Parse an entire input line into a list of [`CommandEntry`] items.
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
 pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
-    let expanded = expand_vars(input, shell_vars);
+    let preprocessed = join_continuations(input);
+    let expanded = expand_vars(&preprocessed, shell_vars);
     let s = expanded.trim();
     if s.is_empty() || s.starts_with('#') {
         return None;
@@ -39,6 +61,10 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, c
             None
         },
     }
+}
+
+pub fn is_reserved_word(word: &str) -> bool {
+    combinators::is_reserved_word(word)
 }
 
 
@@ -402,5 +428,16 @@ mod tests {
             }
             _ => panic!("Expected Loop node"),
         }
+    }
+
+    #[test]
+    fn test_join_continuations() {
+        let input = "echo hello ,\nworld";
+        let joined = join_continuations(input);
+        assert_eq!(joined, "echo hello world");
+
+        let input = "ls ,\n  -l ,\n  /tmp";
+        let joined = join_continuations(input);
+        assert_eq!(joined, "ls   -l   /tmp");
     }
 }

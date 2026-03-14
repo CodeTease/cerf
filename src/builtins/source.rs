@@ -60,13 +60,23 @@ pub fn run(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
     let mut last_result = ExecutionResult::KeepRunning;
     let mut last_code: i32 = 0;
 
+    let mut full_line = String::new();
     for line in contents.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
+        let trimmed_end = line.trim_end();
+        if trimmed_end.ends_with(',') {
+            full_line.push_str(&trimmed_end[..trimmed_end.len() - 1]);
+            continue;
+        }
+        
+        full_line.push_str(line);
+        let input = full_line.trim().to_string();
+        full_line.clear();
+
+        if input.is_empty() || input.starts_with('#') {
             continue;
         }
 
-        if let Some(entries) = parser::parse_pipeline(trimmed, &state.variables) {
+        if let Some(entries) = parser::parse_pipeline(&input, &state.variables) {
             match execute_list(entries, state) {
                 (ExecutionResult::Exit, code) => {
                     last_result = ExecutionResult::Exit;

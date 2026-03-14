@@ -122,6 +122,7 @@ fn main() -> rustyline::Result<()> {
         });
     }
 
+    let mut input_buffer = String::new();
     loop {
         // Poll for any background jobs that have finished
         #[cfg(unix)]
@@ -131,18 +132,32 @@ fn main() -> rustyline::Result<()> {
         #[cfg(unix)]
         engine::job_control::restore_terminal(&state);
 
-        let prompt = get_prompt();
+        let prompt = if input_buffer.is_empty() {
+            get_prompt()
+        } else {
+            state.get_var_string("PS2").unwrap_or_else(|| "> ".to_string())
+        };
+
         let readline = rl.readline(&prompt);
         match readline {
             Ok(line) => {
-                let input = line.trim();
+                let trimmed = line.trim_end();
+                if trimmed.ends_with(',') {
+                    input_buffer.push_str(&trimmed[..trimmed.len() - 1]);
+                    continue;
+                }
+                
+                input_buffer.push_str(&line);
+                let input = input_buffer.trim().to_string();
+                input_buffer.clear();
+
                 if input.is_empty() {
                     continue;
                 }
-                let _ = rl.add_history_entry(input);
-                state.add_history(input);
+                let _ = rl.add_history_entry(&input);
+                state.add_history(&input);
 
-                if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
+                if let Some(entries) = parser::parse_pipeline(&input, &state.variables) {
                     match engine::execute_list(entries, &mut state) {
                         (engine::ExecutionResult::Exit, _) => break,
                         _ => {},
@@ -150,9 +165,17 @@ fn main() -> rustyline::Result<()> {
                 }
             },
             Err(ReadlineError::Interrupted) => {
+                input_buffer.clear();
                 continue;
             },
             Err(ReadlineError::Eof) => {
+                if !input_buffer.is_empty() {
+                    let input = input_buffer.trim().to_string();
+                    input_buffer.clear();
+                    if let Some(entries) = parser::parse_pipeline(&input, &state.variables) {
+                        let _ = engine::execute_list(entries, &mut state);
+                    }
+                }
                 println!("exit");
                 break;
             },
