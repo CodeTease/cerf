@@ -370,4 +370,40 @@ mod tests {
             _ => panic!("Expected FuncDecl node"),
         }
     }
+
+    #[test]
+    fn test_parse_for_loop() {
+        let cmd = parse_line("for x in a b c { echo $x }").unwrap();
+        match cmd {
+            CommandNode::For { var, items, body } => {
+                assert_eq!(var, "x");
+                assert_eq!(arg_values(&items), vec!["a", "b", "c"]);
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected For node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_while_loop() {
+        let cmd = parse_line("while true { echo ok }").unwrap();
+        match cmd {
+            CommandNode::While { cond, body } => {
+                assert_eq!(cond.len(), 1);
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected While node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_loop() {
+        let cmd = parse_line("loop { echo ok }").unwrap();
+        match cmd {
+            CommandNode::Loop { body } => {
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected Loop node"),
+        }
+    }
 }

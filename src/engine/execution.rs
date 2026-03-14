@@ -328,6 +328,42 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 state.functions.insert(name.clone(), body.clone());
                 return (ExecutionResult::KeepRunning, 0);
             }
+            crate::parser::CommandNode::For { var, items, body } => {
+                let expanded_items = expand_globs(items);
+                let mut final_code = 0;
+                for item in expanded_items {
+                    state.set_var(var, crate::engine::state::Variable::new_string(item.clone()));
+                    let (res, code) = execute_list(body.clone(), state);
+                    if let ExecutionResult::Exit = res { return (res, code); }
+                    final_code = code;
+                }
+                let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
+                return (ExecutionResult::KeepRunning, code);
+            }
+            crate::parser::CommandNode::While { cond, body } => {
+                let mut final_code = 0;
+                loop {
+                    let (res, cond_code) = execute_list(cond.clone(), state);
+                    if let ExecutionResult::Exit = res { return (res, cond_code); }
+                    if cond_code != 0 {
+                        break;
+                    }
+                    let (res, body_code) = execute_list(body.clone(), state);
+                    if let ExecutionResult::Exit = res { return (res, body_code); }
+                    final_code = body_code;
+                }
+                let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
+                return (ExecutionResult::KeepRunning, code);
+            }
+            crate::parser::CommandNode::Loop { body } => {
+                let mut final_code = 0;
+                loop {
+                    let (res, body_code) = execute_list(body.clone(), state);
+                    if let ExecutionResult::Exit = res { return (res, body_code); }
+                    final_code = body_code;
+                }
+                // Unreachable unless broken or exited
+            }
             crate::parser::CommandNode::Simple(cmd) => {
                 // If this is a defined function, execute it
                 if let Some(name) = &cmd.name {

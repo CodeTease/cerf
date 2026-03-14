@@ -120,7 +120,7 @@ fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
 
 // ── Single command (with redirects) ───────────────────────────────────────
 
-const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func"];
+const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func", "for", "in", "while", "loop"];
 
 fn is_reserved_word(word: &str) -> bool {
     RESERVED_WORDS.contains(&word)
@@ -259,11 +259,68 @@ fn parse_func_decl(input: &str) -> IResult<&str, CommandNode> {
     Ok((input, CommandNode::FuncDecl { name, body }))
 }
 
+/// Parse a `for` loop command.
+fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
+    let (input, _) = nom::bytes::complete::tag("for")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, var_str) = is_not(" \t\r\n")(input)?;
+    let var = var_str.trim().to_string();
+    let (input, _) = multispace1(input)?;
+    let (input, _) = nom::bytes::complete::tag("in")(input)?;
+    let (mut rest, _) = multispace1(input)?;
+    
+    let mut items = Vec::new();
+    loop {
+        if let Ok((r, _)) = multispace0::<_, nom::error::Error<&str>>(rest) {
+            if r.starts_with('{') {
+                rest = r;
+                break;
+            }
+        }
+        
+        match parse_arg(rest) {
+            Ok((after_arg, arg)) => {
+                items.push(arg);
+                let (after_space, _) = multispace0(after_arg)?;
+                rest = after_space;
+            }
+            Err(_) => break, // Fallback if no arg can be parsed
+        }
+    }
+    
+    let (input, body) = parse_block_body(rest)?;
+    
+    Ok((input, CommandNode::For { var, items, body }))
+}
+
+/// Parse a `while` loop command.
+fn parse_while_command(input: &str) -> IResult<&str, CommandNode> {
+    let (input, _) = nom::bytes::complete::tag("while")(input)?;
+    let (input, _) = multispace1(input)?;
+    
+    let (input, cond) = parse_command_list(input)?;
+    let (input, body) = parse_block_body(input)?;
+    
+    Ok((input, CommandNode::While { cond, body }))
+}
+
+/// Parse a `loop` command.
+fn parse_loop_command(input: &str) -> IResult<&str, CommandNode> {
+    let (input, _) = nom::bytes::complete::tag("loop")(input)?;
+    let (rest, _) = multispace0(input)?;
+    let (input, body) = parse_block_body(rest)?;
+    
+    Ok((input, CommandNode::Loop { body }))
+}
+
 /// Parse any command node (if, func, or simple).
 pub fn parse_command_node(input: &str) -> IResult<&str, CommandNode> {
     alt((
         parse_if_command,
         parse_func_decl,
+        parse_for_command,
+        parse_while_command,
+        parse_loop_command,
         nom::combinator::map(parse_simple_command, CommandNode::Simple),
     )).parse(input)
 }

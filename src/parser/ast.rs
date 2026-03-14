@@ -44,6 +44,18 @@ pub enum CommandNode {
         name: String,
         body: Vec<CommandEntry>,
     },
+    For {
+        var: String,
+        items: Vec<Arg>,
+        body: Vec<CommandEntry>,
+    },
+    While {
+        cond: Vec<CommandEntry>,
+        body: Vec<CommandEntry>,
+    },
+    Loop {
+        body: Vec<CommandEntry>,
+    },
 }
 
 impl CommandNode {
