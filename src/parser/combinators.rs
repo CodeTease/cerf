@@ -120,6 +120,12 @@ fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
 
 // ── Single command (with redirects) ───────────────────────────────────────
 
+const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func"];
+
+fn is_reserved_word(word: &str) -> bool {
+    RESERVED_WORDS.contains(&word)
+}
+
 pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
     let (mut rest, _) = multispace0(input)?;
 
@@ -138,7 +144,13 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
 
     // Parse the command name (optional if assignments are present).
     let (after_name, name) = match parse_arg(rest) {
-        Ok((after, n)) => (after, Some(n.value)),
+        Ok((after, arg)) => {
+            if !arg.quoted && is_reserved_word(&arg.value) {
+                // Return an error if a reserved word is used unquoted as a command name.
+                return Err(nom::Err::Error(nom::error::Error::new(rest, nom::error::ErrorKind::Tag)));
+            }
+            (after, Some(arg.value))
+        }
         Err(e) => {
             if assignments.is_empty() {
                 return Err(e);

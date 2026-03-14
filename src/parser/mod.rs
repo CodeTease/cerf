@@ -26,14 +26,21 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, c
     let s = expanded.trim();
 
     match combinators::parse_command_list(s) {
-        Ok((_, entries)) => {
+        Ok((rem, entries)) => {
+            if !rem.trim().is_empty() {
+                eprintln!("cerf: syntax error near unexpected token '{}'", rem.trim());
+                return None;
+            }
             if entries.is_empty() {
                 None
             } else {
                 Some(entries)
             }
         }
-        Err(_) => None,
+        Err(_) => {
+            eprintln!("cerf: syntax error: incomplete or invalid command");
+            None
+        },
     }
 }
 
