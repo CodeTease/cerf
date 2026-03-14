@@ -294,7 +294,7 @@ fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
         }
     }
     
-    let (_input, body) = parse_block_body(rest)?;
+    let (mut rest, body) = parse_block_body(rest)?;
     
     let mut redirects = Vec::new();
     while let Ok((new_rest, redir)) = parse_redirect(rest) {

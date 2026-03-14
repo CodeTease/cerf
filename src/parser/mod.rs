@@ -15,13 +15,12 @@ pub use expand::expand_vars;
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
-pub fn parse_input(input: &str, _shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() || trimmed.starts_with('#') {
+pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
+    let expanded = expand_vars(input, shell_vars);
+    let s = expanded.trim();
+    if s.is_empty() || s.starts_with('#') {
         return None;
     }
-
-    let s = input.trim();
 
     match combinators::parse_command_list(s) {
         Ok((rem, entries)) => {
@@ -337,7 +336,7 @@ mod tests {
     fn test_parse_if_simple() {
         let cmd = parse_line("if true { echo ok }").unwrap();
         match cmd {
-            CommandNode::If { branches, else_branch } => {
+            CommandNode::If { branches, else_branch, .. } => {
                 assert_eq!(branches.len(), 1);
                 assert!(else_branch.is_none());
             }
@@ -349,7 +348,7 @@ mod tests {
     fn test_parse_if_elif_else() {
         let cmd = parse_line("if cmd1 { echo 1 } elif cmd2 { echo 2 } else { echo 3 }").unwrap();
         match cmd {
-            CommandNode::If { branches, else_branch } => {
+            CommandNode::If { branches, else_branch, .. } => {
                 assert_eq!(branches.len(), 2);
                 assert!(else_branch.is_some());
             }
@@ -373,7 +372,7 @@ mod tests {
     fn test_parse_for_loop() {
         let cmd = parse_line("for x in a b c { echo $x }").unwrap();
         match cmd {
-            CommandNode::For { var, items, body } => {
+            CommandNode::For { var, items, body, .. } => {
                 assert_eq!(var, "x");
                 assert_eq!(arg_values(&items), vec!["a", "b", "c"]);
                 assert_eq!(body.len(), 1);
@@ -386,7 +385,7 @@ mod tests {
     fn test_parse_while_loop() {
         let cmd = parse_line("while true { echo ok }").unwrap();
         match cmd {
-            CommandNode::While { cond, body } => {
+            CommandNode::While { cond, body, .. } => {
                 assert_eq!(cond.len(), 1);
                 assert_eq!(body.len(), 1);
             }
@@ -398,7 +397,7 @@ mod tests {
     fn test_parse_loop() {
         let cmd = parse_line("loop { echo ok }").unwrap();
         match cmd {
-            CommandNode::Loop { body } => {
+            CommandNode::Loop { body, .. } => {
                 assert_eq!(body.len(), 1);
             }
             _ => panic!("Expected Loop node"),
