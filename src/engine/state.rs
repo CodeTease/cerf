@@ -309,6 +309,38 @@ pub enum ExecutionResult {
 fn init_env_vars() -> HashMap<String, String> {
     let mut vars: HashMap<String, String> = std::env::vars().collect();
 
+    // Helper to get temp dir
+    fn temp_dir(vars: &HashMap<String, String>) -> String {
+        #[cfg(windows)]
+        {
+            if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
+                return appdata;
+            } else if let Some(home) = vars.get("HOME") {
+                return format!("{}\\AppData\\Local", home);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            if let Some(home) = vars.get("HOME") {
+                return format!("{}/.tmp", home);
+            }
+        }
+        "/tmp".to_string()
+    }
+
+    // Helper to get user name
+    fn user_name(vars: &HashMap<String, String>) -> String {
+        #[cfg(windows)]
+        {
+            let user = std::env::var("USERNAME").unwrap_or_else(|_| "unknown".to_string());
+            return user;
+        }
+        #[cfg(not(windows))]
+        {
+            let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+            return user;
+        }
+    }
     // 1. Ensure HOME is set
     if !vars.contains_key("HOME") {
         #[cfg(windows)]
@@ -355,7 +387,97 @@ fn init_env_vars() -> HashMap<String, String> {
             vars.insert("PWD".to_string(), cwd.to_string_lossy().to_string());
         }
     }
-    
+
+    // 6. Ensure XDG_CONFIG_HOME is set
+    if !vars.contains_key("XDG_CONFIG_HOME") {
+        #[cfg(windows)]
+        {
+            if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
+                vars.insert("XDG_CONFIG_HOME".to_string(), appdata);
+            } else if let Some(home) = vars.get("HOME") {
+                vars.insert("XDG_CONFIG_HOME".to_string(), format!("{}\\AppData\\Local", home));
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            if let Some(home) = vars.get("HOME") {
+                vars.insert("XDG_CONFIG_HOME".to_string(), format!("{}/.config", home));
+            }
+        }
+    }
+
+    // 7. Ensure TERM is set
+    if !vars.contains_key("TERM") {
+        vars.insert("TERM".to_string(), "xterm-256color".to_string());
+    }
+
+    // 8. Ensure PS1 and PS2 are set
+    if !vars.contains_key("PS1") {
+        vars.insert("PS1".to_string(), "\\u@\\h:\\w\\$ ".to_string());
+    }
+    if !vars.contains_key("PS2") {
+        vars.insert("PS2".to_string(), "> ".to_string());
+    }
+
+    // 9. Ensure SHLVL is set
+    if let Some(shlvl_str) = vars.get("SHLVL") {
+        let new_shlvl = shlvl_str.parse::<i32>().unwrap_or(0) + 1;
+        vars.insert("SHLVL".to_string(), new_shlvl.to_string());
+    } else {
+        vars.insert("SHLVL".to_string(), "1".to_string());
+    }
+
+    // 10. Ensure LANG is set
+    if !vars.contains_key("LANG") {
+        vars.insert("LANG".to_string(), "en_US.UTF-8".to_string());
+    }
+    // 11. Ensure HISTFILE is set
+    if !vars.contains_key("HISTFILE") {
+        if let Some(home) = vars.get("HOME") {
+            vars.insert("HISTFILE".to_string(), format!("{}/.cerf_history", home));
+        }
+    }
+    // 12. Ensure HISTFILESIZE is set
+    if !vars.contains_key("HISTFILESIZE") {
+        vars.insert("HISTFILESIZE".to_string(), "10000".to_string());
+    }
+    // 13. Ensure HISTSIZE is set
+    if !vars.contains_key("HISTSIZE") {
+        vars.insert("HISTSIZE".to_string(), "10000".to_string());
+    }
+    // 14. Ensure TMPDIR is set
+    if !vars.contains_key("TMPDIR") {
+        vars.insert("TMPDIR".to_string(), temp_dir(&vars));
+    }
+    // 15. Ensure TMP is set
+    if !vars.contains_key("TMP") {
+        vars.insert("TMP".to_string(), temp_dir(&vars));
+    }
+    // 16. Ensure TEMP is set
+    if !vars.contains_key("TEMP") {
+        vars.insert("TEMP".to_string(), temp_dir(&vars));
+    }
+    // 17. Ensure USER is set
+    if !vars.contains_key("USER") {
+        vars.insert("USER".to_string(), user_name(&vars));
+    }
+    // 18. Ensure USERNAME is set
+    if !vars.contains_key("USERNAME") {
+        vars.insert("USERNAME".to_string(), user_name(&vars));
+    }
+    // 19. Ensure USERID is set
+    if !vars.contains_key("UID") {
+        // Windows doesn't have UID, we print nothing
+        #[cfg(windows)]
+        {
+            vars.insert("UID".to_string(), "".to_string());
+        }
+        #[cfg(not(windows))]
+        {
+            let uid = std::env::var("UID").unwrap_or_else(|_| "unknown".to_string());
+            vars.insert("UID".to_string(), uid);
+        }
+    }
     // Sync environment variables that we just added defaults for
     for (key, val) in &vars {
         if std::env::var(key).is_err() {
