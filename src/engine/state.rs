@@ -144,7 +144,9 @@ impl ShellState {
     pub fn new() -> Self {
         let mut variables = HashMap::new();
         for (k, v) in init_env_vars() {
-            variables.insert(k, Variable::new_string(v));
+            let mut var = Variable::new_string(v);
+            var.exported = true;
+            variables.insert(k, var);
         }
 
         let mut state = ShellState {
@@ -345,6 +347,13 @@ fn init_env_vars() -> HashMap<String, String> {
     if !vars.contains_key("SHELL") {
         let path = std::env::current_exe().unwrap();
         vars.insert("SHELL".to_string(), path.to_string_lossy().to_string());
+    }
+
+    // 5. Ensure PWD is set
+    if !vars.contains_key("PWD") {
+        if let Ok(cwd) = std::env::current_dir() {
+            vars.insert("PWD".to_string(), cwd.to_string_lossy().to_string());
+        }
     }
     
     // Sync environment variables that we just added defaults for
