@@ -136,6 +136,15 @@ mod tests {
     // ── connector / pipeline tests ────────────────────────────────────────
 
     #[test]
+    fn test_newline_separator() {
+        let vars = std::collections::HashMap::new();
+        let entries = parse_pipeline("echo hello\necho world", &vars).unwrap();
+        // If newlines are separators, we should have 2 entries.
+        // If they are just whitespace, we'll have 1 entry with 3 args.
+        assert_eq!(entries.len(), 2, "Newline should be a command separator");
+    }
+
+    #[test]
     fn test_semicolon_two_commands() {
         let vars = std::collections::HashMap::new();
         let entries = parse_pipeline("echo hello ; echo world", &vars).unwrap();

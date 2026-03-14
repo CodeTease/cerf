@@ -1,10 +1,11 @@
 use nom::{
     branch::alt,
     bytes::complete::is_not,
-    character::complete::{char, multispace0, multispace1},
+    character::complete::{char, multispace0, multispace1, space0, space1, line_ending},
     sequence::{delimited, preceded},
     IResult,
     Parser,
+    multi::many1,
 };
 
 use super::ast::{Arg, CommandEntry, CommandNode, Connector, Pipeline, Redirect, RedirectKind, SimpleCommand};
@@ -127,7 +128,7 @@ pub fn is_reserved_word(word: &str) -> bool {
 }
 
 pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
-    let (mut rest, _) = multispace0(input)?;
+    let (mut rest, _) = space0(input)?;
 
     let mut assignments: Vec<(String, String)> = Vec::new();
 
@@ -135,7 +136,7 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
     loop {
         if let Ok((after_assign, assign)) = parse_assignment(rest) {
             assignments.push(assign);
-            let (after_space, _) = multispace0(after_assign)?;
+            let (after_space, _) = space0(after_assign)?;
             rest = after_space;
         } else {
             break;
@@ -168,7 +169,7 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
     // pipe or end-of-input.
     loop {
         // Check if the next word is a brace
-        if let Ok((r2, _)) = multispace0::<_, nom::error::Error<&str>>(rest) {
+        if let Ok((r2, _)) = space0::<_, nom::error::Error<&str>>(rest) {
             if r2.starts_with('{') || r2.starts_with('}') {
                 break;
             }
@@ -182,7 +183,7 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
         }
 
         // Try an argument preceded by whitespace
-        if let Ok((after_arg, arg)) = preceded(multispace1, parse_arg).parse(rest) {
+        if let Ok((after_arg, arg)) = preceded(space1, parse_arg).parse(rest) {
             args.push(arg);
             rest = after_arg;
             continue;
@@ -192,7 +193,7 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
         break;
     }
 
-    let (rest, _) = multispace0(rest)?;
+    let (rest, _) = space0(rest)?;
 
     Ok((rest, SimpleCommand { assignments, name, args, redirects }))
 }
@@ -409,13 +410,15 @@ pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
 
 /// Parse a connector operator: `&&`, `||`, or `;`.
 pub fn parse_connector(input: &str) -> IResult<&str, Connector> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = space0(input)?;
     alt((
         // Two-character operators must come before single-character ones.
         nom::combinator::map(nom::bytes::complete::tag("&&"), |_| Connector::And),
         nom::combinator::map(nom::bytes::complete::tag("||"), |_| Connector::Or),
         nom::combinator::map(char(';'), |_| Connector::Semi),
         nom::combinator::map(char('&'), |_| Connector::Amp),
+        // Newlines act as implicit semicolons
+        nom::combinator::map(many1(preceded(space0, line_ending)), |_| Connector::Semi),
     ))
     .parse(input)
 }
@@ -435,12 +438,15 @@ pub fn parse_command_list(input: &str) -> IResult<&str, Vec<CommandEntry>> {
     let mut current_connector = None;
     
     loop {
-        let (r, _) = multispace0(rest)?;
+        let (r, _) = space0(rest)?;
         if r.is_empty() || r.starts_with('}') || r.starts_with('{') {
             entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
             rest = r;
             break;
         }
+
+        // We also check for newlines here if they are not picked up by parse_connector
+        // But parse_connector should handle them now.
         
         let (after_conn, conn) = match parse_connector(r) {
             Ok(v) => v,

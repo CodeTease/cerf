@@ -310,18 +310,18 @@ fn init_env_vars() -> HashMap<String, String> {
     let mut vars: HashMap<String, String> = std::env::vars().collect();
 
     // Helper to get temp dir
-    fn temp_dir(vars: &HashMap<String, String>) -> String {
+    fn temp_dir(_vars: &HashMap<String, String>) -> String {
         #[cfg(windows)]
         {
             if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
                 return appdata;
-            } else if let Some(home) = vars.get("HOME") {
+            } else if let Some(home) = _vars.get("HOME") {
                 return format!("{}\\AppData\\Local", home);
             }
         }
         #[cfg(not(windows))]
         {
-            if let Some(home) = vars.get("HOME") {
+            if let Some(home) = _vars.get("HOME") {
                 return format!("{}/.tmp", home);
             }
         }
@@ -329,7 +329,7 @@ fn init_env_vars() -> HashMap<String, String> {
     }
 
     // Helper to get user name
-    fn user_name(vars: &HashMap<String, String>) -> String {
+    fn user_name(_vars: &HashMap<String, String>) -> String {
         #[cfg(windows)]
         {
             let user = std::env::var("USERNAME").unwrap_or_else(|_| "unknown".to_string());
