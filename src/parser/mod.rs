@@ -6,6 +6,7 @@ mod expand;
 // for all existing callers (engine.rs, main.rs, etc.).
 pub use ast::{Arg, CommandEntry, CommandNode, Connector, Pipeline, Redirect, RedirectKind};
 pub use expand::expand_vars;
+pub use combinators::is_reserved_word;
 
 
 
@@ -61,10 +62,6 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, c
             None
         },
     }
-}
-
-pub fn is_reserved_word(word: &str) -> bool {
-    combinators::is_reserved_word(word)
 }
 
 

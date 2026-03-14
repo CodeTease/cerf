@@ -21,7 +21,12 @@ pub fn type_of(cmd: &str, aliases: &HashMap<String, String>) -> String {
         return format!("{} is aliased to `{}`", cmd, value);
     }
 
-    // 2. Shell builtins.
+    // 2. Shell keywords.
+    if crate::parser::is_reserved_word(cmd) {
+        return format!("{} is a shell keyword", cmd);
+    }
+    
+    // 3. Shell builtins.
     if crate::builtins::registry::find_command(cmd).is_some() {
         return format!("{} is a shell builtin", cmd);
     }
@@ -46,5 +51,35 @@ pub fn run(args: &[String], aliases: &HashMap<String, String>) {
         } else {
             println!("{}", desc);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_of_keyword() {
+        let aliases = HashMap::new();
+        assert_eq!(type_of("if", &aliases), "if is a shell keyword");
+        assert_eq!(type_of("while", &aliases), "while is a shell keyword");
+        assert_eq!(type_of("for", &aliases), "for is a shell keyword");
+        assert_eq!(type_of("{", &aliases), "{ is a shell keyword");
+        assert_eq!(type_of("!", &aliases), "! is a shell keyword");
+    }
+
+    #[test]
+    fn test_type_of_builtin() {
+        let aliases = HashMap::new();
+        // Internal names are prefixed
+        assert_eq!(type_of("dir.cd", &aliases), "dir.cd is a shell builtin");
+        assert_eq!(type_of("io.echo", &aliases), "io.echo is a shell builtin");
+    }
+
+    #[test]
+    fn test_type_of_alias() {
+        let mut aliases = HashMap::new();
+        aliases.insert("cd".to_string(), "dir.cd".to_string());
+        assert_eq!(type_of("cd", &aliases), "cd is aliased to `dir.cd`");
     }
 }

@@ -120,9 +120,9 @@ fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
 
 // ── Single command (with redirects) ───────────────────────────────────────
 
-const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func", "for", "in", "while", "loop", "break", "continue"];
+pub const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func", "for", "in", "while", "loop", "break", "continue", "{", "}", "!"];
 
-fn is_reserved_word(word: &str) -> bool {
+pub fn is_reserved_word(word: &str) -> bool {
     RESERVED_WORDS.contains(&word)
 }
 
