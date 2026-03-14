@@ -15,15 +15,13 @@ pub use expand::expand_vars;
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
-pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
+pub fn parse_input(input: &str, _shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
     let trimmed = input.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return None;
     }
 
-    // Expand environment variables before handing the line to nom.
-    let expanded = expand_vars(input, shell_vars);
-    let s = expanded.trim();
+    let s = input.trim();
 
     match combinators::parse_command_list(s) {
         Ok((rem, entries)) => {

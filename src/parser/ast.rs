@@ -39,6 +39,7 @@ pub enum CommandNode {
     If {
         branches: Vec<(Vec<CommandEntry>, Vec<CommandEntry>)>,
         else_branch: Option<Vec<CommandEntry>>,
+        redirects: Vec<Redirect>,
     },
     FuncDecl {
         name: String,
@@ -48,14 +49,19 @@ pub enum CommandNode {
         var: String,
         items: Vec<Arg>,
         body: Vec<CommandEntry>,
+        redirects: Vec<Redirect>,
     },
     While {
         cond: Vec<CommandEntry>,
         body: Vec<CommandEntry>,
+        redirects: Vec<Redirect>,
     },
     Loop {
         body: Vec<CommandEntry>,
+        redirects: Vec<Redirect>,
     },
+    Break,
+    Continue,
 }
 
 impl CommandNode {
@@ -90,6 +96,10 @@ impl CommandNode {
     pub fn redirects(&self) -> &[Redirect] {
         match self {
             Self::Simple(s) => &s.redirects,
+            Self::If { redirects, .. } => redirects,
+            Self::For { redirects, .. } => redirects,
+            Self::While { redirects, .. } => redirects,
+            Self::Loop { redirects, .. } => redirects,
             _ => &[],
         }
     }

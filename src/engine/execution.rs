@@ -3,12 +3,12 @@ use std::process::{Command, Stdio};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
-use crate::parser::{CommandEntry, Connector, Pipeline};
+use crate::parser::{CommandEntry, Connector, Pipeline, expand_vars, Arg};
 use crate::builtins;
 #[cfg(unix)]
 use crate::signals;
 
-use super::state::{ShellState, ExecutionResult};
+use super::state::{ShellState, ExecutionResult, Variable};
 use super::redirect::{open_stdout_redirect, open_stdin_redirect, resolve_redirects};
 use super::alias::expand_alias;
 use super::path::{expand_home, find_executable};
@@ -29,21 +29,26 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
     if cmd.name.is_none() {
         // Just assignments
         for (key, val) in &cmd.assignments {
-            state.set_var(key, crate::engine::state::Variable::new_string(val.clone()));
+            let expanded_val = expand_vars(val, &state.variables);
+            state.set_var(key, Variable::new_string(expanded_val.clone()));
             // If already in env, update it there too
             if std::env::var(key).is_ok() {
-               unsafe { std::env::set_var(key, val); }
+               unsafe { std::env::set_var(key, &expanded_val); }
             }
         }
         // Handle residuals like redirects (e.g., VAR=val > file)
         if let Some(redir) = stdin_redir {
-            if let Err(e) = open_stdin_redirect(redir) {
+            let mut expanded_redir = redir.clone();
+            expanded_redir.file = expand_vars(&redir.file, &state.variables);
+            if let Err(e) = open_stdin_redirect(&expanded_redir) {
                 eprintln!("{}", e);
                 return (ExecutionResult::KeepRunning, 1);
             }
         }
         if let Some(redir) = stdout_redir {
-            if let Err(e) = open_stdout_redirect(redir) {
+            let mut expanded_redir = redir.clone();
+            expanded_redir.file = expand_vars(&redir.file, &state.variables);
+            if let Err(e) = open_stdout_redirect(&expanded_redir) {
                 eprintln!("{}", e);
                 return (ExecutionResult::KeepRunning, 1);
             }
@@ -51,10 +56,18 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
         return (ExecutionResult::KeepRunning, 0);
     }
 
-    let name = cmd.name.as_ref().unwrap();
+    let raw_name = cmd.name.as_ref().unwrap();
+    let name = expand_vars(raw_name, &state.variables);
 
-    // Expand globs on the argument list.
-    let args = expand_globs(&cmd.args);
+    // Expand variables in the argument list BEFORE glob expansion.
+    let expanded_args: Vec<Arg> = cmd.args.iter().map(|a| {
+        Arg {
+            value: expand_vars(&a.value, &state.variables),
+            quoted: a.quoted,
+        }
+    }).collect();
+
+    let args = expand_globs(&expanded_args);
 
     if let Some(cmd_info) = builtins::registry::find_command(name.as_str()) {
         // Some builtins (like history, dirs) need access to the stdout redirect directly
@@ -63,6 +76,64 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
         // signatures that don't take redirects, we'll temporarily handle redirects here for 
         // the generic cases (echo, help, pwd, type) that previously had them inline.
         
+        if pipeline.background {
+            // Builtin in background -> spawn a subshell process for it.
+            // This is the simplest way to ensure it doesn't block the main shell.
+            let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cerf")));
+            command.arg("-c").arg(crate::engine::job_control::format_command(pipeline));
+            
+            // Redirects for subshell
+            if let Some(redir) = stdin_redir {
+                let mut expanded_redir = redir.clone();
+                expanded_redir.file = expand_vars(&redir.file, &state.variables);
+                if let Ok(f) = open_stdin_redirect(&expanded_redir) { command.stdin(Stdio::from(f)); }
+            } else {
+                command.stdin(Stdio::null());
+            }
+            if let Some(redir) = stdout_redir {
+                let mut expanded_redir = redir.clone();
+                expanded_redir.file = expand_vars(&redir.file, &state.variables);
+                if let Ok(f) = open_stdout_redirect(&expanded_redir) { command.stdout(Stdio::from(f)); }
+            }
+
+            match command.spawn() {
+                Ok(child) => {
+                    let pid = child.id();
+                    let job_id = state.next_job_id;
+                    println!("[{}] {}", job_id, pid);
+                    
+                    #[cfg(windows)]
+                    let job_handle = unsafe {
+                        let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                        windows_sys::Win32::System::IO::CreateIoCompletionPort(handle, state.iocp_handle as _, job_id as _, 0);
+                        windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(handle, std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _);
+                        handle as isize
+                    };
+
+                    let job = crate::engine::state::Job {
+                        id: job_id,
+                        pgid: pid,
+                        #[cfg(windows)]
+                        job_handle,
+                        command: crate::engine::job_control::format_command(pipeline),
+                        processes: vec![crate::engine::state::ProcessInfo {
+                            pid,
+                            name: name.to_string(),
+                            state: crate::engine::state::JobState::Running,
+                        }],
+                        reported_done: false,
+                    };
+                    state.jobs.insert(job_id, job);
+                    state.next_job_id += 1;
+                    return (ExecutionResult::KeepRunning, 0);
+                }
+                Err(e) => {
+                    eprintln!("cerf: error backgrounding builtin: {}", e);
+                    return (ExecutionResult::KeepRunning, 1);
+                }
+            }
+        }
+
         let run_generic = |state: &mut ShellState| -> (ExecutionResult, i32) {
             (cmd_info.run)(&args, state)
         };
@@ -117,7 +188,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             }
         }
     } else {
-        let resolved = find_executable(name).unwrap_or_else(|| expand_home(name));
+        let resolved = find_executable(&name).unwrap_or_else(|| expand_home(&name));
         
         #[cfg(windows)]
         let mut command = {
@@ -142,7 +213,9 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
 
         // Apply stdin redirect
         if let Some(redir) = stdin_redir {
-            match open_stdin_redirect(redir) {
+            let mut expanded_redir = redir.clone();
+            expanded_redir.file = expand_vars(&redir.file, &state.variables);
+            match open_stdin_redirect(&expanded_redir) {
                 Ok(f) => { command.stdin(Stdio::from(f)); }
                 Err(e) => {
                     eprintln!("{}", e);
@@ -155,7 +228,9 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
 
         // Apply stdout redirect
         if let Some(redir) = stdout_redir {
-            match open_stdout_redirect(redir) {
+            let mut expanded_redir = redir.clone();
+            expanded_redir.file = expand_vars(&redir.file, &state.variables);
+            match open_stdout_redirect(&expanded_redir) {
                 Ok(f) => { command.stdout(Stdio::from(f)); }
                 Err(e) => {
                     eprintln!("{}", e);
@@ -300,15 +375,21 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     // Single-command pipeline — just run the command directly (supports builtins).
     if cmds.len() == 1 {
         match &cmds[0] {
-            crate::parser::CommandNode::If { branches, else_branch } => {
+            crate::parser::CommandNode::Break => return (ExecutionResult::Break, 0),
+            crate::parser::CommandNode::Continue => return (ExecutionResult::Continue, 0),
+            crate::parser::CommandNode::If { branches, else_branch, redirects } => {
+                if !redirects.is_empty() {
+                    return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
+                }
+                
                 let mut final_code = 0;
                 let mut executed = false;
                 for (cond, body) in branches {
                     let (res, cond_code) = execute_list(cond.clone(), state);
-                    if let ExecutionResult::Exit = res { return (res, cond_code); }
+                    if !matches!(res, ExecutionResult::KeepRunning) { return (res, cond_code); }
                     if cond_code == 0 {
                         let (res, body_code) = execute_list(body.clone(), state);
-                        if let ExecutionResult::Exit = res { return (res, body_code); }
+                        if !matches!(res, ExecutionResult::KeepRunning) { return (res, body_code); }
                         final_code = body_code;
                         executed = true;
                         break;
@@ -317,7 +398,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 if !executed {
                     if let Some(body) = else_branch {
                         let (res, body_code) = execute_list(body.clone(), state);
-                        if let ExecutionResult::Exit = res { return (res, body_code); }
+                        if !matches!(res, ExecutionResult::KeepRunning) { return (res, body_code); }
                         final_code = body_code;
                     }
                 }
@@ -328,50 +409,86 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 state.functions.insert(name.clone(), body.clone());
                 return (ExecutionResult::KeepRunning, 0);
             }
-            crate::parser::CommandNode::For { var, items, body } => {
-                let expanded_items = expand_globs(items);
+            crate::parser::CommandNode::For { var, items, body, redirects } => {
+                if !redirects.is_empty() {
+                    return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
+                }
+
+                // Expand variables in loop items
+                let expanded_items_vars: Vec<Arg> = items.iter().map(|a| {
+                    Arg {
+                        value: expand_vars(&a.value, &state.variables),
+                        quoted: a.quoted,
+                    }
+                }).collect();
+                
+                let expanded_items = expand_globs(&expanded_items_vars);
                 let mut final_code = 0;
                 for item in expanded_items {
-                    state.set_var(var, crate::engine::state::Variable::new_string(item.clone()));
+                    state.set_var(var, Variable::new_string(item.clone()));
                     let (res, code) = execute_list(body.clone(), state);
-                    if let ExecutionResult::Exit = res { return (res, code); }
-                    final_code = code;
+                    match res {
+                        ExecutionResult::Exit => return (res, code),
+                        ExecutionResult::Break => break,
+                        ExecutionResult::Continue => continue,
+                        ExecutionResult::KeepRunning => {
+                            final_code = code;
+                        }
+                    }
                 }
                 let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
                 return (ExecutionResult::KeepRunning, code);
             }
-            crate::parser::CommandNode::While { cond, body } => {
+            crate::parser::CommandNode::While { cond, body, redirects } => {
+                if !redirects.is_empty() {
+                    return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
+                }
+
                 let mut final_code = 0;
                 loop {
                     let (res, cond_code) = execute_list(cond.clone(), state);
-                    if let ExecutionResult::Exit = res { return (res, cond_code); }
+                    if !matches!(res, ExecutionResult::KeepRunning) { return (res, cond_code); }
                     if cond_code != 0 {
                         break;
                     }
                     let (res, body_code) = execute_list(body.clone(), state);
-                    if let ExecutionResult::Exit = res { return (res, body_code); }
-                    final_code = body_code;
+                    match res {
+                        ExecutionResult::Exit => return (res, body_code),
+                        ExecutionResult::Break => break,
+                        ExecutionResult::Continue => continue,
+                        ExecutionResult::KeepRunning => {
+                            final_code = body_code;
+                        }
+                    }
                 }
                 let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
                 return (ExecutionResult::KeepRunning, code);
             }
-            crate::parser::CommandNode::Loop { body } => {
+            crate::parser::CommandNode::Loop { body, redirects } => {
+                if !redirects.is_empty() {
+                    return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
+                }
+
                 let mut final_code = 0;
                 loop {
                     let (res, body_code) = execute_list(body.clone(), state);
-                    if let ExecutionResult::Exit = res { return (res, body_code); }
-                    final_code = body_code;
+                    match res {
+                        ExecutionResult::Exit => return (res, body_code),
+                        ExecutionResult::Break => break,
+                        ExecutionResult::Continue => continue,
+                        ExecutionResult::KeepRunning => {
+                            final_code = body_code;
+                        }
+                    }
                 }
-                // Unreachable unless broken or exited
+                return (ExecutionResult::KeepRunning, final_code);
             }
             crate::parser::CommandNode::Simple(cmd) => {
-                // If this is a defined function, execute it
-                if let Some(name) = &cmd.name {
-                    if let Some(func_body) = state.functions.get(name).cloned() {
-                        let (res, code) = execute_list(func_body, state);
-                        let final_code = if pipeline.negated { if code == 0 { 1 } else { 0 } } else { code };
-                        return (res, final_code);
-                    }
+                let name = expand_vars(cmd.name.as_deref().unwrap_or(""), &state.variables);
+                if let Some(func_body) = state.functions.get(&name).cloned() {
+                    let (res, code) = execute_list(func_body, state);
+                    let final_code = if pipeline.negated { if code == 0 { 1 } else { 0 } } else { code };
+                    return (res, final_code);
                 }
 
                 let (res, code) = execute_simple(&pipeline, state);
@@ -421,12 +538,22 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     };
 
     for (i, cmd) in cmds.iter().enumerate() {
-        let name = match cmd.name() {
-            Some(n) => n,
-            None => {
+        let name = match cmd {
+            crate::parser::CommandNode::Simple(s) => s.name.as_deref().unwrap_or(""),
+            crate::parser::CommandNode::Break | crate::parser::CommandNode::Continue => {
+                eprintln!("cerf: control flow command in pipeline is currently unsupported");
+                continue;
+            }
+            _ => {
+                // For now, complex blocks in pipelines are unsupported in the external pipe forker.
+                eprintln!("cerf: complex blocks in pipelines are currently unsupported");
                 continue;
             }
         };
+
+        if name.is_empty() {
+             continue;
+        }
 
         // If a builtin appears in a multi-command pipeline, check for exit
         if name == "exit" {
@@ -667,4 +794,80 @@ pub fn execute_list(entries: Vec<CommandEntry>, state: &mut ShellState) -> (Exec
     }
 
     (ExecutionResult::KeepRunning, last_code)
+}
+
+fn execute_block_with_redirects(
+    pipeline: &Pipeline,
+    node: &crate::parser::CommandNode,
+    redirects: &[crate::parser::Redirect],
+    state: &mut ShellState,
+) -> (ExecutionResult, i32) {
+    // Blocks with redirects run in a subshell.
+    let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cerf")));
+    
+    // We need to format the specific command node. 
+    command.arg("-c").arg(crate::engine::job_control::format_node_full(node));
+    
+    let (stdin_redir, stdout_redir) = resolve_redirects(redirects);
+    
+    if let Some(redir) = stdin_redir {
+        let mut expanded_redir = redir.clone();
+        expanded_redir.file = expand_vars(&redir.file, &state.variables);
+        if let Ok(f) = open_stdin_redirect(&expanded_redir) { command.stdin(Stdio::from(f)); }
+    }
+    if let Some(redir) = stdout_redir {
+        let mut expanded_redir = redir.clone();
+        expanded_redir.file = expand_vars(&redir.file, &state.variables);
+        if let Ok(f) = open_stdout_redirect(&expanded_redir) { command.stdout(Stdio::from(f)); }
+    }
+
+    if pipeline.background {
+        match command.spawn() {
+            Ok(child) => {
+                let pid = child.id();
+                let job_id = state.next_job_id;
+                println!("[{}] {}", job_id, pid);
+                
+                #[cfg(windows)]
+                let job_handle = unsafe {
+                    let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                    windows_sys::Win32::System::IO::CreateIoCompletionPort(handle, state.iocp_handle as _, job_id as _, 0);
+                    windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(handle, std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _);
+                    handle as isize
+                };
+
+                let job = crate::engine::state::Job {
+                    id: job_id,
+                    pgid: pid,
+                    #[cfg(windows)]
+                    job_handle,
+                    command: crate::engine::job_control::format_command(pipeline),
+                    processes: vec![crate::engine::state::ProcessInfo {
+                        pid,
+                        name: "block".to_string(),
+                        state: crate::engine::state::JobState::Running,
+                    }],
+                    reported_done: false,
+                };
+                state.jobs.insert(job_id, job);
+                state.next_job_id += 1;
+                (ExecutionResult::KeepRunning, 0)
+            }
+            Err(e) => {
+                eprintln!("cerf: error backgrounding block: {}", e);
+                (ExecutionResult::KeepRunning, 1)
+            }
+        }
+    } else {
+        match command.spawn() {
+            Ok(mut child) => {
+                let status = child.wait().map(|s| s.code().unwrap_or(0)).unwrap_or(1);
+                (ExecutionResult::KeepRunning, status)
+            }
+            Err(e) => {
+                eprintln!("cerf: error executing block: {}", e);
+                (ExecutionResult::KeepRunning, 1)
+            }
+        }
+    }
 }

@@ -18,12 +18,7 @@ pub fn eval_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult,
     let command_str = args.join(" ");
     
     if let Some(entries) = parser::parse_pipeline(&command_str, &state.variables) {
-        let (result, code) = engine::execute_list(entries, state);
-        if let ExecutionResult::Exit = result {
-            return (ExecutionResult::Exit, code);
-        } else {
-            return (ExecutionResult::KeepRunning, code);
-        }
+        return engine::execute_list(entries, state);
     } else {
         (ExecutionResult::KeepRunning, 0)
     }

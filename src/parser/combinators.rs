@@ -120,7 +120,7 @@ fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
 
 // ── Single command (with redirects) ───────────────────────────────────────
 
-const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func", "for", "in", "while", "loop"];
+const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func", "for", "in", "while", "loop", "break", "continue"];
 
 fn is_reserved_word(word: &str) -> bool {
     RESERVED_WORDS.contains(&word)
@@ -245,7 +245,13 @@ fn parse_if_command(input: &str) -> IResult<&str, CommandNode> {
         }
     }
     
-    Ok((rest, CommandNode::If { branches, else_branch }))
+    let mut redirects = Vec::new();
+    while let Ok((new_rest, redir)) = parse_redirect(rest) {
+        redirects.push(redir);
+        rest = new_rest;
+    }
+    
+    Ok((rest, CommandNode::If { branches, else_branch, redirects }))
 }
 
 /// Parse a `func` declaration.
@@ -288,9 +294,15 @@ fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
         }
     }
     
-    let (input, body) = parse_block_body(rest)?;
+    let (_input, body) = parse_block_body(rest)?;
     
-    Ok((input, CommandNode::For { var, items, body }))
+    let mut redirects = Vec::new();
+    while let Ok((new_rest, redir)) = parse_redirect(rest) {
+        redirects.push(redir);
+        rest = new_rest;
+    }
+    
+    Ok((rest, CommandNode::For { var, items, body, redirects }))
 }
 
 /// Parse a `while` loop command.
@@ -300,17 +312,41 @@ fn parse_while_command(input: &str) -> IResult<&str, CommandNode> {
     
     let (input, cond) = parse_command_list(input)?;
     let (input, body) = parse_block_body(input)?;
+    let mut rest = input;
+    let mut redirects = Vec::new();
+    while let Ok((new_rest, redir)) = parse_redirect(rest) {
+        redirects.push(redir);
+        rest = new_rest;
+    }
     
-    Ok((input, CommandNode::While { cond, body }))
+    Ok((rest, CommandNode::While { cond, body, redirects }))
 }
 
 /// Parse a `loop` command.
 fn parse_loop_command(input: &str) -> IResult<&str, CommandNode> {
     let (input, _) = nom::bytes::complete::tag("loop")(input)?;
-    let (rest, _) = multispace0(input)?;
-    let (input, body) = parse_block_body(rest)?;
+    let (input, _) = multispace0(input)?;
+    let (input, body) = parse_block_body(input)?;
+    let mut rest = input;
+    let mut redirects = Vec::new();
+    while let Ok((new_rest, redir)) = parse_redirect(rest) {
+        redirects.push(redir);
+        rest = new_rest;
+    }
     
-    Ok((input, CommandNode::Loop { body }))
+    Ok((rest, CommandNode::Loop { body, redirects }))
+}
+
+/// Parse a `break` command.
+fn parse_break_command(input: &str) -> IResult<&str, CommandNode> {
+    let (input, _) = nom::bytes::complete::tag("break")(input)?;
+    Ok((input, CommandNode::Break))
+}
+
+/// Parse a `continue` command.
+fn parse_continue_command(input: &str) -> IResult<&str, CommandNode> {
+    let (input, _) = nom::bytes::complete::tag("continue")(input)?;
+    Ok((input, CommandNode::Continue))
 }
 
 /// Parse any command node (if, func, or simple).
@@ -321,6 +357,8 @@ pub fn parse_command_node(input: &str) -> IResult<&str, CommandNode> {
         parse_for_command,
         parse_while_command,
         parse_loop_command,
+        parse_break_command,
+        parse_continue_command,
         nom::combinator::map(parse_simple_command, CommandNode::Simple),
     )).parse(input)
 }

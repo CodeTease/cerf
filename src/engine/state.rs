@@ -299,6 +299,8 @@ impl ShellState {
 pub enum ExecutionResult {
     KeepRunning,
     Exit,
+    Break,
+    Continue,
 }
 
 /// Initialize shell variables from the OS environment and set defaults for missing ones.

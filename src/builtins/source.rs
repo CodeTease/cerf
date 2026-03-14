@@ -73,6 +73,16 @@ pub fn run(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
                     last_code = code;
                     break;
                 }
+                (ExecutionResult::Break, code) => {
+                    last_result = ExecutionResult::Break;
+                    last_code = code;
+                    break;
+                }
+                (ExecutionResult::Continue, code) => {
+                    last_result = ExecutionResult::Continue;
+                    last_code = code;
+                    break;
+                }
                 (ExecutionResult::KeepRunning, code) => {
                     last_code = code;
                 }

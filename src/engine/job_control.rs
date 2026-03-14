@@ -274,13 +274,88 @@ pub fn update_jobs(state: &mut ShellState) {
 
 pub fn format_command(pipeline: &crate::parser::Pipeline) -> String {
     pipeline.commands.iter().map(|c| {
-        let mut parts = vec![];
-        if let Some(n) = c.name() {
-            parts.push(n.clone());
-        }
-        parts.extend(c.args().iter().map(|a| a.value.clone()));
-        parts.join(" ")
+        format_node_full(c)
     }).collect::<Vec<_>>().join(" | ") + if pipeline.background { " &" } else { "" }
+}
+
+pub fn format_node_full(node: &crate::parser::CommandNode) -> String {
+    match node {
+        crate::parser::CommandNode::Simple(s) => {
+            let mut parts = vec![];
+            if let Some(n) = &s.name {
+                parts.push(n.clone());
+            }
+            parts.extend(s.args.iter().map(|a| {
+                if a.quoted { format!("\"{}\"", a.value) } else { a.value.clone() }
+            }));
+            parts.join(" ")
+        }
+        crate::parser::CommandNode::If { branches, else_branch, .. } => {
+            let mut s = String::new();
+            for (i, (cond, body)) in branches.iter().enumerate() {
+                if i == 0 {
+                    s.push_str("if ");
+                } else {
+                    s.push_str(" elif ");
+                }
+                s.push_str(&format_list(cond));
+                s.push_str(" { ");
+                s.push_str(&format_list(body));
+                s.push_str(" }");
+            }
+            if let Some(else_b) = else_branch {
+                s.push_str(" else { ");
+                s.push_str(&format_list(else_b));
+                s.push_str(" }");
+            }
+            s
+        }
+        crate::parser::CommandNode::For { var, items, body, .. } => {
+            let mut s = format!("for {} in ", var);
+            s.push_str(&items.iter().map(|a| if a.quoted { format!("\"{}\"", a.value) } else { a.value.clone() }).collect::<Vec<_>>().join(" "));
+            s.push_str(" { ");
+            s.push_str(&format_list(body));
+            s.push_str(" }");
+            s
+        }
+        crate::parser::CommandNode::While { cond, body, .. } => {
+            let mut s = "while ".to_string();
+            s.push_str(&format_list(cond));
+            s.push_str(" { ");
+            s.push_str(&format_list(body));
+            s.push_str(" }");
+            s
+        }
+        crate::parser::CommandNode::Loop { body, .. } => {
+            let mut s = "loop { ".to_string();
+            s.push_str(&format_list(body));
+            s.push_str(" }");
+            s
+        }
+        crate::parser::CommandNode::FuncDecl { name, body } => {
+            let mut s = format!("func {} {{ ", name);
+            s.push_str(&format_list(body));
+            s.push_str(" }");
+            s
+        }
+        crate::parser::CommandNode::Break => "break".to_string(),
+        crate::parser::CommandNode::Continue => "continue".to_string(),
+    }
+}
+
+fn format_list(entries: &[crate::parser::CommandEntry]) -> String {
+    entries.iter().map(|e| {
+        let mut s = crate::engine::job_control::format_command(&e.pipeline);
+        if let Some(conn) = e.connector {
+            match conn {
+                crate::parser::Connector::And => s.push_str(" && "),
+                crate::parser::Connector::Or => s.push_str(" || "),
+                crate::parser::Connector::Semi => s.push_str(" ; "),
+                crate::parser::Connector::Amp => s.push_str(" & "),
+            }
+        }
+        s
+    }).collect::<Vec<_>>().join(" ")
 }
 
 pub fn set_current_job(state: &mut ShellState, job_id: usize) {

@@ -145,7 +145,7 @@ fn main() -> rustyline::Result<()> {
                 if let Some(entries) = parser::parse_pipeline(input, &state.variables) {
                     match engine::execute_list(entries, &mut state) {
                         (engine::ExecutionResult::Exit, _) => break,
-                        (engine::ExecutionResult::KeepRunning, _) => {},
+                        _ => {},
                     }
                 }
             },
