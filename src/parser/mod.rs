@@ -33,6 +33,49 @@ pub fn join_continuations(input: &str) -> String {
     result.trim_end_matches('\n').to_string()
 }
 
+/// Check whether the input looks incomplete and the shell should keep
+/// reading more lines before attempting to parse.
+///
+/// This is a lightweight heuristic (no full parse) that catches the most
+/// common multi-line patterns:
+/// - Unbalanced `{` / `}` braces (control-flow blocks)
+/// - A trailing connector / pipe (`|`, `&&`, `||`)
+/// - A trailing comma (Cerf's explicit line-continuation character)
+pub fn is_incomplete(input: &str) -> bool {
+    let joined = join_continuations(input);
+    let s = joined.trim();
+    if s.is_empty() {
+        return false;
+    }
+
+    // 1. Trailing comma → explicit continuation.
+    if s.ends_with(',') {
+        return true;
+    }
+
+    // 2. Trailing connector / pipe → next line has the RHS.
+    if s.ends_with('|') || s.ends_with("&&") || s.ends_with("||") {
+        return true;
+    }
+
+    // 3. Unbalanced braces (skip characters inside quotes).
+    let mut depth: i32 = 0;
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => { while let Some(c) = chars.next() { if c == '"' { break; } } }
+            '\'' => { while let Some(c) = chars.next() { if c == '\'' { break; } } }
+            '#' => { // skip line comments
+                for c in chars.by_ref() { if c == '\n' { break; } }
+            }
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            _ => {}
+        }
+    }
+    depth > 0
+}
+
 /// Parse an entire input line into a list of [`CommandEntry`] items.
 ///
 /// Returns `None` if the line is empty or a comment.
@@ -446,4 +489,79 @@ mod tests {
         let joined = join_continuations(input);
         assert_eq!(joined, "ls   -l   /tmp");
     }
-}
+
+    // ── is_incomplete tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_incomplete_unbalanced_brace() {
+        assert!(is_incomplete("if true {"));
+        assert!(is_incomplete("if true {\n  echo ok"));
+        assert!(!is_incomplete("if true { echo ok }"));
+    }
+
+    #[test]
+    fn test_incomplete_trailing_pipe() {
+        assert!(is_incomplete("ls |"));
+        assert!(is_incomplete("echo hello &&"));
+        assert!(is_incomplete("echo hello ||"));
+        assert!(!is_incomplete("ls | grep foo"));
+    }
+
+    #[test]
+    fn test_incomplete_trailing_comma() {
+        assert!(is_incomplete("echo hello,"));
+        assert!(!is_incomplete("echo hello"));
+    }
+
+    #[test]
+    fn test_complete_multiline_if() {
+        assert!(!is_incomplete("if true {\n  echo ok\n}"));
+    }
+
+    #[test]
+    fn test_complete_simple() {
+        assert!(!is_incomplete("echo hello"));
+        assert!(!is_incomplete(""));
+        assert!(!is_incomplete("   "));
+    }
+
+    // ── multi-line parse tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_multiline_if() {
+        let vars = std::collections::HashMap::new();
+        let input = "if true {\n  echo ok\n}";
+        let entries = parse_pipeline(input, &vars).unwrap();
+        assert_eq!(entries.len(), 1);
+        match &entries[0].pipeline.commands[0] {
+            CommandNode::If { branches, .. } => {
+                assert_eq!(branches.len(), 1);
+            }
+            _ => panic!("Expected If node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiline_for() {
+        let vars = std::collections::HashMap::new();
+        let input = "for x in a b c {\n  echo $x\n}";
+        let entries = parse_pipeline(input, &vars).unwrap();
+        assert_eq!(entries.len(), 1);
+        match &entries[0].pipeline.commands[0] {
+            CommandNode::For { var, items, body, .. } => {
+                assert_eq!(var, "x");
+                assert_eq!(arg_values(items), vec!["a", "b", "c"]);
+                assert_eq!(body.len(), 1);
+            }
+            _ => panic!("Expected For node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiline_commands() {
+        let vars = std::collections::HashMap::new();
+        let input = "echo hello\necho world";
+        let entries = parse_pipeline(input, &vars).unwrap();
+        assert_eq!(entries.len(), 2);
+    }
+    }

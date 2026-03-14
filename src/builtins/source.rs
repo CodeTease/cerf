@@ -57,46 +57,21 @@ pub fn run(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
 
     SOURCE_DEPTH.with(|d| d.set(depth + 1));
 
-    let mut last_result = ExecutionResult::KeepRunning;
-    let mut last_code: i32 = 0;
+    let last_result;
+    let last_code: i32;
 
-    let mut full_line = String::new();
-    for line in contents.lines() {
-        let trimmed_end = line.trim_end();
-        if trimmed_end.ends_with(',') {
-            full_line.push_str(&trimmed_end[..trimmed_end.len() - 1]);
-            continue;
+    // Parse the entire file as a single unit. The parser already handles
+    // newlines as command separators and supports multi-line constructs
+    // (if/for/while/func blocks) natively — no comma continuations needed.
+    match parser::parse_pipeline(&contents, &state.variables) {
+        Some(entries) => {
+            let (res, code) = execute_list(entries, state);
+            last_result = res;
+            last_code = code;
         }
-        
-        full_line.push_str(line);
-        let input = full_line.trim().to_string();
-        full_line.clear();
-
-        if input.is_empty() || input.starts_with('#') {
-            continue;
-        }
-
-        if let Some(entries) = parser::parse_pipeline(&input, &state.variables) {
-            match execute_list(entries, state) {
-                (ExecutionResult::Exit, code) => {
-                    last_result = ExecutionResult::Exit;
-                    last_code = code;
-                    break;
-                }
-                (ExecutionResult::Break, code) => {
-                    last_result = ExecutionResult::Break;
-                    last_code = code;
-                    break;
-                }
-                (ExecutionResult::Continue, code) => {
-                    last_result = ExecutionResult::Continue;
-                    last_code = code;
-                    break;
-                }
-                (ExecutionResult::KeepRunning, code) => {
-                    last_code = code;
-                }
-            }
+        None => {
+            last_result = ExecutionResult::KeepRunning;
+            last_code = 0;
         }
     }
 

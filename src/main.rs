@@ -145,12 +145,28 @@ fn main() -> rustyline::Result<()> {
         match readline {
             Ok(line) => {
                 let trimmed = line.trim_end();
+
+                // Explicit comma continuation (kept for backwards compat).
                 if trimmed.ends_with(',') {
                     input_buffer.push_str(&trimmed[..trimmed.len() - 1]);
                     continue;
                 }
-                
-                input_buffer.push_str(&line);
+
+                if input_buffer.is_empty() {
+                    input_buffer.push_str(&line);
+                } else {
+                    // Separate accumulated lines with a real newline so
+                    // the parser sees them as distinct commands.
+                    input_buffer.push('\n');
+                    input_buffer.push_str(&line);
+                }
+
+                // If the input looks incomplete (unbalanced braces, trailing
+                // operator, etc.), keep reading the next line.
+                if parser::is_incomplete(&input_buffer) {
+                    continue;
+                }
+
                 let input = input_buffer.trim().to_string();
                 input_buffer.clear();
 
