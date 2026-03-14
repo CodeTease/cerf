@@ -1,12 +1,12 @@
-# Cerf Shell
+# Cerf
 
-**Cerf** is a modern, cross-platform shell written in Rust, providing a robust POSIX-like environment with advanced features like job control and structured control flow.
+**Cerf** is a cross-platform shell written in Rust, providing a POSIX-like environment with core features like job control and structured control flow.
 
 A **CodeTease** project. (CerfSh branch)
 
 ## Features
 
-- **POSIX-ready:** Pipelines, redirections, and logic operators.
+- **POSIX-inspired:** Pipelines, redirections, and logic operators.
 - **Control Flow:** `if`, `while`, `for`, `loop`, and function support.
 - **Cross-platform:** Native support for Windows and Unix-like systems.
 - **Interactive:** Command history, tab completion, and rich prompts.
@@ -19,6 +19,10 @@ Run the executable to enter the interactive shell:
 ```cerf
 cerf
 ```
+
+## Installation
+
+<!-- Temporary leave nothing for the Installation section -->
 
 ### Examples
 
@@ -45,9 +49,30 @@ func hello {
 hello
 ```
 
-## Installation
+## Scripting Best Practices
 
-<!-- Temporary leave nothing for the Installation section -->
+When writing scripts for Cerf, it is recommended to use the **namespaced command syntax** (e.g., `dir.cd` instead of `cd`).
+
+Most common commands in Cerf are actually aliases to their namespaced counterparts:
+- `cd` → `dir.cd`
+- `pwd` → `dir.pwd`
+- `echo` → `io.echo`
+- `exit` → `sys.exit`
+
+### Why use Namespaces?
+
+Namespaced commands provide several advantages for scripting:
+1. **No Alias Overrides:** Namespaced commands cannot be overridden by user aliases. This ensures that your script always uses the intended builtin command, regardless of the user's interactive configuration.
+2. **Stability:** Scripts using namespaced commands are more resilient to changes in the shell's default alias mappings or user environment.
+
+### Example
+
+```cerf
+# Recommendation: Use namespaced commands in scripts
+dir.cd src
+io.echo "Building project..."
+sys.exec cargo build
+```
 
 ## License
 
