@@ -341,6 +341,12 @@ fn init_env_vars() -> HashMap<String, String> {
         vars.insert("EDITOR".to_string(), "vi".to_string());
     }
 
+    // 4. Ensure SHELL is set
+    if !vars.contains_key("SHELL") {
+        let path = std::env::current_exe().unwrap();
+        vars.insert("SHELL".to_string(), path.to_string_lossy().to_string());
+    }
+    
     // Sync environment variables that we just added defaults for
     for (key, val) in &vars {
         if std::env::var(key).is_err() {
