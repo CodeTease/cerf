@@ -14,7 +14,7 @@ keywords = [
     "terminal",
     "command-line",
 ]
-categories = ["shell", "terminal-emulator", "command-line", "cli"]
+categories = ["command-line-utilities"]
 rust-version = "1.93.1"
 include = ["src/**/*", "Cargo.toml", "LICENSE", "README.md"]
 
