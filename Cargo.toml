@@ -13,8 +13,6 @@ keywords = [
     "codetease",
     "terminal",
     "command-line",
-    "cli",
-    "terminal-emulator",
 ]
 categories = ["shell", "terminal-emulator", "command-line", "cli"]
 rust-version = "1.93.1"
