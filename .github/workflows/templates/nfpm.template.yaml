@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
+
+name: "{{bin}}"
+arch: "${ARCH}"
+platform: "linux"
+version: "${VERSION}"
+section: "default"
+priority: "extra"
+maintainer: "{{maintainer}}"
+description: |
+  {{description}}
+vendor: "{{vendor}}"
+homepage: "{{homepage}}"
+license: "{{license}}"
+contents:
+  - src: ./{{bin}}
+    dst: /usr/bin/{{bin}}
+  - src: ./LICENSE
+    dst: /usr/share/doc/{{bin}}/copyright

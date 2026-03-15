@@ -49,15 +49,15 @@ if $use_installer {
     let features = (try { $config.installer.features } catch { [] })
     
     if "sh" in $features {
-        if not (".github/workflows/installer.template.sh" | path exists) {
-            print "Error: .github/workflows/installer.template.sh missing"
+        if not (".github/workflows/templates/installer.template.sh" | path exists) {
+            print "Error: .github/workflows/templates/installer.template.sh missing"
             exit 1
         }
     }
     
     if "ps1" in $features {
-        if not (".github/workflows/installer.template.ps1" | path exists) {
-            print "Error: .github/workflows/installer.template.ps1 missing"
+        if not (".github/workflows/templates/installer.template.ps1" | path exists) {
+            print "Error: .github/workflows/templates/installer.template.ps1 missing"
             exit 1
         }
     }
@@ -67,8 +67,8 @@ if $use_installer {
 # Validate Arch Linux configuration
 let use_arch = (try { $config.archlinux.enable } catch { false })
 if $use_arch {
-    if not (".github/workflows/PKGBUILD.template" | path exists) {
-        print "Error: .github/workflows/PKGBUILD.template missing"
+    if not (".github/workflows/templates/PKGBUILD.template" | path exists) {
+        print "Error: .github/workflows/templates/PKGBUILD.template missing"
         exit 1
     }
     print "Validated Arch Linux configuration."
@@ -77,8 +77,8 @@ if $use_arch {
 # Validate Homebrew configuration
 let use_brew = (try { $config.brew.enable } catch { false })
 if $use_brew {
-    if not (".github/workflows/Formula.template.rb" | path exists) {
-        print "Error: .github/workflows/Formula.template.rb missing"
+    if not (".github/workflows/templates/Formula.template.rb" | path exists) {
+        print "Error: .github/workflows/templates/Formula.template.rb missing"
         exit 1
     }
     print "Validated Homebrew configuration."
@@ -87,8 +87,8 @@ if $use_brew {
 # Validate Scoop configuration
 let use_scoop = (try { $config.scoop.enable } catch { false })
 if $use_scoop {
-    if not (".github/workflows/Scoop.template.json" | path exists) {
-        print "Error: .github/workflows/Scoop.template.json missing"
+    if not (".github/workflows/templates/Scoop.template.json" | path exists) {
+        print "Error: .github/workflows/templates/Scoop.template.json missing"
         exit 1
     }
     print "Validated Scoop configuration."
@@ -99,8 +99,8 @@ let use_cloudsmith = (try { $config.cloudsmith.enable } catch { false })
 if $use_cloudsmith {
     let docs_path = (try { $config.cloudsmith.docs_path } catch { "" })
     if $docs_path != "" {
-        if not (".github/workflows/Registry.template.md" | path exists) {
-            print "Error: .github/workflows/Registry.template.md missing"
+        if not (".github/workflows/templates/Registry.template.md" | path exists) {
+            print "Error: .github/workflows/templates/Registry.template.md missing"
             exit 1
         }
     }
@@ -110,8 +110,8 @@ if $use_cloudsmith {
 # Validate NuGet configuration
 let use_nuget = (try { $config.nuget.enable } catch { false })
 if $use_nuget {
-    if not (".github/workflows/Nuspec.template.xml" | path exists) {
-        print "Error: .github/workflows/Nuspec.template.xml missing"
+    if not (".github/workflows/templates/Nuspec.template.xml" | path exists) {
+        print "Error: .github/workflows/templates/Nuspec.template.xml missing"
         exit 1
     }
     print "Validated NuGet configuration."
@@ -126,19 +126,29 @@ if $use_crate {
 # Validate MSI configuration
 let use_msi = (try { $config.msi.enable } catch { false })
 if $use_msi {
-    if not (".github/workflows/main.template.wxs" | path exists) {
-        print "Error: .github/workflows/main.template.wxs missing"
+    if not (".github/workflows/templates/main.template.wxs" | path exists) {
+        print "Error: .github/workflows/templates/main.template.wxs missing"
         exit 1
     }
-    if not (".github/workflows/build.template.wixproj" | path exists) {
-        print "Error: .github/workflows/build.template.wixproj missing"
+    if not (".github/workflows/templates/build.template.wixproj" | path exists) {
+        print "Error: .github/workflows/templates/build.template.wixproj missing"
         exit 1
     }
-    if not (".github/workflows/main.template.wxl" | path exists) {
-        print "Error: .github/workflows/main.template.wxl missing"
+    if not (".github/workflows/templates/main.template.wxl" | path exists) {
+        print "Error: .github/workflows/templates/main.template.wxl missing"
         exit 1
     }
     print "Validated MSI configuration."
+}
+
+# Validate nFPM configuration
+let use_nfpm = (try { $config.nfpm.enable } catch { false })
+if $use_nfpm {
+    if not (".github/workflows/templates/nfpm.template.yaml" | path exists) {
+        print "Error: .github/workflows/templates/nfpm.template.yaml missing"
+        exit 1
+    }
+    print "Validated nFPM configuration."
 }
 
 # Validate Docker configuration
@@ -151,7 +161,7 @@ if $use_docker {
     }
     
     for tpl in $templates {
-        let tpl_file = $".github/workflows/Dockerfile.($tpl).template"
+        let tpl_file = $".github/workflows/templates/Dockerfile.($tpl).template"
         if not ($tpl_file | path exists) {
             print $"Error: ($tpl_file) missing"
             exit 1

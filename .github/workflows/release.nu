@@ -276,9 +276,9 @@ def run_build [] {
 
         # Optional: Windows MSI packaging
         let msi_enabled = (try { $config.msi.enable } catch { false })
-        let tpl_wxs = $"($env.GITHUB_WORKSPACE)/.github/workflows/main.template.wxs"
-        let tpl_wixproj = $"($env.GITHUB_WORKSPACE)/.github/workflows/build.template.wixproj"
-        let tpl_wxl = $"($env.GITHUB_WORKSPACE)/.github/workflows/main.template.wxl"
+        let tpl_wxs = $"($env.GITHUB_WORKSPACE)/.github/workflows/templates/main.template.wxs"
+        let tpl_wixproj = $"($env.GITHUB_WORKSPACE)/.github/workflows/templates/build.template.wixproj"
+        let tpl_wxl = $"($env.GITHUB_WORKSPACE)/.github/workflows/templates/main.template.wxl"
 
         if $msi_enabled and ($tpl_wxs | path exists) and ($tpl_wixproj | path exists) {
             let can_build_msi = [dotnet wix] | all { (which $in | length) > 0 }
@@ -331,7 +331,7 @@ def run_build [] {
         # NuGet packaging
         let nuget_enabled = (try { $config.nuget.enable } catch { false })
         if $nuget_enabled and $target == "x86_64-pc-windows-msvc" {
-            let n_template = $"($env.GITHUB_WORKSPACE)/.github/workflows/Nuspec.template.xml"
+            let n_template = $"($env.GITHUB_WORKSPACE)/.github/workflows/templates/Nuspec.template.xml"
             if ($n_template | path exists) {
                 print $"(char nl)Building NuGet package..."
                 let authors = (try { $config.nuget.authors } catch { (try { $config.metadata.maintainer } catch { "Maintainer" }) })
@@ -398,7 +398,7 @@ def run_publish [] {
         let targets_context = ($target_keys | reduce -f {} {|it, acc| $acc | insert $"target.($it)" (try { $config.targets | get $it } catch { false }) })
 
         if "sh" in $features {
-            let tpl_sh = ".github/workflows/installer.template.sh"
+            let tpl_sh = ".github/workflows/templates/installer.template.sh"
             if ($tpl_sh | path exists) {
                 let content = (format_template $tpl_sh $targets_context | str replace --all "{{bin}}" $bin | str replace --all "{{version}}" $version | str replace --all "{{repository}}" $repo | str replace --all "{{path}}" $p_linux)
                 $content | save --force $"($dist)/install.sh"
@@ -409,7 +409,7 @@ def run_publish [] {
         }
 
         if "ps1" in $features {
-            let tpl_ps1 = ".github/workflows/installer.template.ps1"
+            let tpl_ps1 = ".github/workflows/templates/installer.template.ps1"
             if ($tpl_ps1 | path exists) {
                 let content = (format_template $tpl_ps1 $targets_context | str replace --all "{{bin}}" $bin | str replace --all "{{version}}" $version | str replace --all "{{repository}}" $repo | str replace --all "{{path-win}}" $p_win)
                 $content | save --force $"($dist)/install.ps1"
@@ -429,62 +429,91 @@ def run_publish [] {
         print $"(char nl)[nFPM] Building Linux packages from artifacts..."
         hr-line
         
-        let archives = (glob $"($dist)/*.tar.gz" | where {|f| ($f | path basename) =~ "linux" })
-        
-        for archive in $archives {
-            let base = ($archive | path basename | str replace ".tar.gz" "")
-            let target_str = ($base | str replace $"($bin_name)-($bin_version)-" "")
-            
-            let nfpm_arch = match $target_str {
-                'x86_64-unknown-linux-gnu' | 'x86_64-unknown-linux-musl' => 'amd64'
-                'i686-unknown-linux-gnu' => '386'
-                'aarch64-unknown-linux-gnu' | 'aarch64-unknown-linux-musl' => 'arm64'
-                'armv7-unknown-linux-gnueabihf' | 'armv7-unknown-linux-musleabihf' => 'arm7'
-                's390x-unknown-linux-gnu' => 's390x'
-                'powerpc64le-unknown-linux-gnu' => 'ppc64le'
-                _ => ''
+        let tpl_nfpm = ".github/workflows/templates/nfpm.template.yaml"
+        if not ($tpl_nfpm | path exists) {
+            print $"::error::($tpl_nfpm) not found. Skipping nFPM packaging."
+        } else {
+            let maintainer = (try { $config.metadata.maintainer } catch { "Maintainer" })
+            let description = (try { $config.metadata.description } catch { "" })
+            let vendor = (try { $config.metadata.vendor } catch { "CodeTease" })
+            let homepage = (try { $config.metadata.homepage } catch { "" })
+            let license = (try { $config.metadata.license } catch { "MIT" })
+            let repo = (try { $config.metadata.repository } catch { "" })
+
+            let n_context = {
+                "nfpm.enable": $use_nfpm,
             }
+
+            let n_content = (format_template $tpl_nfpm $n_context
+                | str replace --all "{{bin}}" $bin_name
+                | str replace --all "{{maintainer}}" $maintainer
+                | str replace --all "{{description}}" $description
+                | str replace --all "{{vendor}}" $vendor
+                | str replace --all "{{homepage}}" $homepage
+                | str replace --all "{{repository}}" $repo
+                | str replace --all "{{license}}" $license)
             
-            if $nfpm_arch != "" {
-                print $"[nFPM] Processing ($target_str) for ($nfpm_arch)..."
-                let tmp_dir = $"($dist)/tmp_($target_str)"
-                mkdir $tmp_dir
+            $n_content | save --force $"($env.GITHUB_WORKSPACE)/nfpm.yaml"
+            print $"Generated ($env.GITHUB_WORKSPACE)/nfpm.yaml"
+
+            let archives = (glob $"($dist)/*.tar.gz" | where {|f| ($f | path basename) =~ "linux" })
+            
+            for archive in $archives {
+                let base = ($archive | path basename | str replace ".tar.gz" "")
+                let target_str = ($base | str replace $"($bin_name)-($bin_version)-" "")
                 
-                # Extract the tar.gz exactly into it
-                tar -xzf $archive -C $tmp_dir
-                
-                let bin_path = $"($tmp_dir)/($base)/($bin_name)"
-                
-                if ($bin_path | path exists) {
-                    cp -v $bin_path $"($env.GITHUB_WORKSPACE)/($bin_name)"
-                    
-                    with-env { ARCH: $nfpm_arch, VERSION: $bin_version } {
-                        cd $env.GITHUB_WORKSPACE
-                        
-                        let is_musl = ($target_str | str contains "musl")
-                        let packagers = if $is_musl {
-                            ["apk"]
-                        } else {
-                            ["deb", "rpm"]
-                        }
-                        
-                        $packagers | each {|packager|
-                            let pkg_file = $"($dist)/($bin_name)-($bin_version)-($target_str).($packager)"
-                            print $"  -> Packaging ($packager)..."
-                            nfpm pkg --packager $packager --target $pkg_file
-                        }
-                    }
+                let nfpm_arch = match $target_str {
+                    'x86_64-unknown-linux-gnu' | 'x86_64-unknown-linux-musl' => 'amd64'
+                    'i686-unknown-linux-gnu' => '386'
+                    'aarch64-unknown-linux-gnu' | 'aarch64-unknown-linux-musl' => 'arm64'
+                    'armv7-unknown-linux-gnueabihf' | 'armv7-unknown-linux-musleabihf' => 'arm7'
+                    's390x-unknown-linux-gnu' => 's390x'
+                    'powerpc64le-unknown-linux-gnu' => 'ppc64le'
+                    _ => ''
                 }
                 
-                rm -rf $tmp_dir
-                rm -f $"($env.GITHUB_WORKSPACE)/($bin_name)"
+                if $nfpm_arch != "" {
+                    print $"[nFPM] Processing ($target_str) for ($nfpm_arch)..."
+                    let tmp_dir = $"($dist)/tmp_($target_str)"
+                    mkdir $tmp_dir
+                    
+                    # Extract the tar.gz exactly into it
+                    tar -xzf $archive -C $tmp_dir
+                    
+                    let bin_path = $"($tmp_dir)/($base)/($bin_name)"
+                    
+                    if ($bin_path | path exists) {
+                        cp -v $bin_path $"($env.GITHUB_WORKSPACE)/($bin_name)"
+                        
+                        with-env { ARCH: $nfpm_arch, VERSION: $bin_version } {
+                            cd $env.GITHUB_WORKSPACE
+                            
+                            let is_musl = ($target_str | str contains "musl")
+                            let packagers = if $is_musl {
+                                ["apk"]
+                            } else {
+                                ["deb", "rpm"]
+                            }
+                            
+                            $packagers | each {|packager|
+                                let pkg_file = $"($dist)/($bin_name)-($bin_version)-($target_str).($packager)"
+                                print $"  -> Packaging ($packager)..."
+                                nfpm pkg --packager $packager --target $pkg_file
+                            }
+                        }
+                    }
+                    
+                    rm -rf $tmp_dir
+                    rm -f $"($env.GITHUB_WORKSPACE)/($bin_name)"
+                }
             }
+            rm -f $"($env.GITHUB_WORKSPACE)/nfpm.yaml"
         }
     }
 
     # 0.75 Generate PKGBUILD for Arch Linux
     let arch_enabled = (try { $config.archlinux.enable } catch { false })
-    let p_template = ".github/workflows/PKGBUILD.template"
+    let p_template = ".github/workflows/templates/PKGBUILD.template"
     if $arch_enabled and ($p_template | path exists) {
         print $"(char nl)[Arch Linux] Generating PKGBUILD and .SRCINFO..."
         hr-line
@@ -543,7 +572,7 @@ def run_publish [] {
 
     # 0.85 Generate Homebrew Formula
     let brew_enabled = (try { $config.brew.enable } catch { false })
-    let f_template = ".github/workflows/Formula.template.rb"
+    let f_template = ".github/workflows/templates/Formula.template.rb"
     if $brew_enabled and ($f_template | path exists) {
         print $"(char nl)[Homebrew] Generating Formula..."
         hr-line
@@ -597,7 +626,7 @@ def run_publish [] {
 
     # 0.90 Generate Scoop Manifest
     let scoop_enabled = (try { $config.scoop.enable } catch { false })
-    let s_template = ".github/workflows/Scoop.template.json"
+    let s_template = ".github/workflows/templates/Scoop.template.json"
     if $scoop_enabled and ($s_template | path exists) {
         print $"(char nl)[Scoop] Generating Manifest..."
         hr-line
@@ -646,7 +675,7 @@ def run_publish [] {
     let cloudsmith_enabled = (try { $config.cloudsmith.enable } catch { false })
     let docs_path = (try { $config.cloudsmith.docs_path } catch { "REGISTRY.md" })
     let docs_file = ($docs_path | path basename)
-    let r_template = ".github/workflows/Registry.template.md"
+    let r_template = ".github/workflows/templates/Registry.template.md"
     if $cloudsmith_enabled and $docs_path != "" and ($r_template | path exists) {
         print $"(char nl)[Registry] Generating Registry instructions..."
         hr-line
@@ -814,7 +843,7 @@ def run_publish [] {
             
             let platforms = ($available_platforms | str join ",")
             
-            let d_template = $".github/workflows/Dockerfile.($tpl).template"
+            let d_template = $".github/workflows/templates/Dockerfile.($tpl).template"
             let d_content = (open --raw $d_template | str replace --all "{{bin}}" $bin_name | str replace --all "{{version}}" $bin_version)
             let d_file = $"($target_dir)/Dockerfile"
             $d_content | save --force $d_file
