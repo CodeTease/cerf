@@ -18,7 +18,7 @@ enable = true
 [cloudsmith]
 enable = true
 repo = "codetease/cerfsh"
-docs_path = "INSTALLATION.md"
+docs_path = "INSTALLTION.md"
 
 [brew]
 enable = true
