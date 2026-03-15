@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <!-- Leveraging WiX 6.0.0 human-readable UpgradeCode feature -->
+  <Package Name="$(var.PROJECT_NAME)" 
+           Manufacturer="{{maintainer}}" 
+           Version="$(var.PROJECT_VERSION)" 
+           UpgradeCode="$(var.UPGRADE_CODE)" 
+           Language="1033">
+    
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Default Installation Directory UI -->
+    <ui:WixUI Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- Using WiX 4/5/6 StandardDirectory, resolving ProgramFiles based on package bitness -->
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="$(var.PROJECT_NAME)" />
+    </StandardDirectory>
+
+    <!-- License Agreement in RTF format -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.PROJECT_NAME)\LICENSE.rtf" />
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component>
+        <File Source="$(var.PROJECT_NAME)\$(var.PROJECT_NAME).exe" />
+      </Component>
+      <Component>
+        <File Source="$(var.PROJECT_NAME)\LICENSE" />
+      </Component>
+      <Component>
+        <File Source="$(var.PROJECT_NAME)\LICENSE.rtf" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Package>
+</Wix>

@@ -1,0 +1,347 @@
+#
+# REF:
+#   1. https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstrategymatrixinclude
+#
+# Optimized for general-purpose
+name: Create Release Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target'
+        required: false
+        type: string
+      os:
+        description: 'OS'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  plan:
+    name: Validate Plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: 0.109.1
+      - name: Run Release Plan Validation
+        id: plan
+        run: nu .github/workflows/release-plan.nu
+
+  release:
+    name: CLI Dummy
+    needs: plan
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON( inputs.target && inputs.os && format('[{{"os":"{0}","target":"{1}"}}]', inputs.os, inputs.target) || needs.plan.outputs.matrix ) }}
+
+    runs-on: ${{matrix.os}}
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install Wix Toolset 6 for Windows
+      shell: pwsh
+      if: ${{ startsWith(matrix.os, 'windows') }}
+      run: |
+        dotnet tool install --global wix --version 6.0.0
+        dotnet workload install wix
+        $wixPath = "$env:USERPROFILE\.dotnet\tools"
+        echo "$wixPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        $env:PATH = "$wixPath;$env:PATH"
+        wix --version
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2.0.1
+      if: ${{ startsWith(matrix.os, 'windows') }}
+
+    - name: Setup Nushell
+      uses: hustcer/setup-nu@v3
+      with:
+        version: 0.109.1
+
+    - name: Update Rust Toolchain Target
+      run: |
+        let config_file = "release.toml"
+        let config = (open $config_file)
+        let toolchain = ($config.metadata.toolchain)
+        echo "[toolchain]" | save --force rust-toolchain.toml
+        echo $"\nchannel = "($toolchain)"" | save --append rust-toolchain.toml
+        echo $"\ntargets = ["${{matrix.target}}"]" | save --append rust-toolchain.toml
+      shell: nu {0}
+
+    - name: Setup Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1.12.0
+      # WARN: Keep the rustflags to prevent from the winget submission error: `CAQuietExec: Error 0xc0000135`
+      with:
+        cache: false
+        rustflags: ''
+
+    - name: Install aria2
+      # Needed for Ubuntu to download cross-toolchains
+      if: ${{ startsWith(matrix.os, 'ubuntu') }}
+      run: "sudo apt install aria2 -y"
+
+    - name: Release Binary (Build & Package)
+      run: nu .github/workflows/release.nu build
+      env:
+        OS: ${{ matrix.os }}
+        TARGET: ${{ matrix.target }}
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v6
+      with:
+        name: release-artifacts-${{ matrix.target }}
+        path: |
+          output/*.msi
+          output/*.zip
+          output/*.tar.gz
+          output/*.deb
+          output/*.rpm
+          output/*.apk
+          output/*.nupkg
+        if-no-files-found: warn
+
+  publish:
+    name: Publish Release
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: 0.109.1
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: output
+          merge-multiple: true
+
+      - name: Setup UV
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
+      - name: Install Cloudsmith CLI
+        run: |
+          sudo chown -R $USER /usr/local/lib/python* /usr/local/bin
+          uv pip install --upgrade --system --break-system-packages cloudsmith-cli requests
+
+      - name: Install nFPM
+        run: |
+          echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
+          sudo apt update
+          sudo apt install nfpm -y
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.12.0
+        with:
+          cache: false
+          rustflags: ''
+
+      - name: Publish Release Assets & Cloudsmith
+        run: nu .github/workflows/release.nu publish
+        env:
+          REF: ${{ github.ref }}
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Upload Registry Manifests
+        uses: actions/upload-artifact@v6
+        with:
+          name: registry-manifests
+          path: |
+            output/*.rb
+            output/*.json
+
+  sha256sum:
+    needs: publish
+    name: Create Sha256sum
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    steps:
+    - name: Download Release Archives
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: >-
+        gh release download ${{ github.ref_name }}
+        --repo ${{ github.repository }}
+        --pattern '*'
+        --dir release
+    - name: Create Checksums
+      run: cd release && shasum -a 256 * > ../SHA256SUMS
+    - name: Publish Checksums
+      uses: softprops/action-gh-release@v2.0.5
+      with:
+        draft: true
+        files: SHA256SUMS
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  brew_publish:
+    name: Publish to Homebrew Tap
+    needs: publish
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc') }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: output
+          merge-multiple: true
+
+      - name: Setup Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: 0.109.1
+
+      - name: Publish to Homebrew Tap
+        env:
+          BREW_TOKEN: ${{ secrets.BREW_TOKEN }}
+        run: |
+          def main [] {
+              let config = (open release.toml)
+              let brew_enabled = (try { $config.brew.enable } catch { false })
+              if not $brew_enabled {
+                  print "Homebrew publishing is disabled in release.toml"
+                  exit 0
+              }
+
+              let tap_repo = (try { $config.brew.tap } catch { "CodeTease/homebrew-tap" })
+              let bin = (try { $config.metadata.bin } catch { "" })
+              
+              if ($env.BREW_TOKEN | is-empty) {
+                  print "Error: BREW_TOKEN secret is not set."
+                  exit 1
+              }
+              
+              let repo_url = $"https://($env.BREW_TOKEN)@github.com/($tap_repo).git"
+              
+              git clone $repo_url brew-repo
+              
+              let rb_file = $"output/($bin).rb"
+              if not ($rb_file | path exists) {
+                  print $"Error: ($rb_file) missing. Cannot publish to Homebrew."
+                  exit 1
+              }
+
+              mkdir "brew-repo/Formula"
+              cp $rb_file $"brew-repo/Formula/($bin).rb"
+              
+              cd brew-repo
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add $"Formula/($bin).rb"
+              
+              let status = (git status --porcelain)
+              if ($status | is-empty) {
+                  print "No changes to commit for Homebrew Tap."
+              } else {
+                  git commit -m $"Update ($bin) to ($env.GITHUB_REF_NAME)"
+                  git pull --rebase
+                  git push
+              }
+          }
+        shell: nu {0}
+
+  scoop_publish:
+    name: Publish to Scoop Bucket
+    needs: publish
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc') }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: output
+          merge-multiple: true
+
+      - name: Setup Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: 0.109.1
+
+      - name: Publish to Scoop
+        env:
+          SCOOP_TOKEN: ${{ secrets.SCOOP_TOKEN }}
+        run: |
+          def main [] {
+              let config = (open release.toml)
+              let scoop_enabled = (try { $config.scoop.enable } catch { false })
+              if not $scoop_enabled {
+                  print "Scoop publishing is disabled in release.toml"
+                  exit 0
+              }
+
+              let bucket = (try { $config.scoop.bucket } catch { "CodeTease/scoop-bucket" })
+              let bin = (try { $config.metadata.bin } catch { "" })
+              
+              if ($env.SCOOP_TOKEN | is-empty) {
+                  print "Error: SCOOP_TOKEN secret is not set."
+                  exit 1
+              }
+
+              let repo_url = $"https://($env.SCOOP_TOKEN)@github.com/($bucket).git"
+              
+              git clone $repo_url scoop-repo
+              
+              let json_file = $"output/($bin).json"
+              if not ($json_file | path exists) {
+                  print $"Error: ($json_file) missing. Cannot publish to Scoop."
+                  exit 1
+              }
+
+              mkdir "scoop-repo/bucket"
+              cp $json_file $"scoop-repo/bucket/($bin).json"
+              
+              cd scoop-repo
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add $"bucket/($bin).json"
+              
+              let status = (git status --porcelain)
+              if ($status | is-empty) {
+                  print "No changes to commit for Scoop Bucket."
+              } else {
+                  git commit -m $"Update ($bin) to ($env.GITHUB_REF_NAME)"
+                  git pull --rebase
+                  git push
+              }
+          }
+        shell: nu {0}

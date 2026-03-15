@@ -1,0 +1,37 @@
+{
+  "version": "{{version}}",
+  "description": "{{description}}",
+  "homepage": "{{homepage}}",
+  "license": "{{license}}",
+  "architecture": {
+    "64bit": {
+      "url": "{{url_win_x64}}",
+      "hash": "{{sha256_win_x64}}",
+      "bin": "{{bin}}.exe"
+    },
+    "32bit": {
+      "url": "{{url_win_x86}}",
+      "hash": "{{sha256_win_x86}}",
+      "bin": "{{bin}}.exe"
+    },
+    "arm64": {
+      "url": "{{url_win_arm64}}",
+      "hash": "{{sha256_win_arm64}}",
+      "bin": "{{bin}}.exe"
+    }
+  },
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "{{repository}}/releases/download/v$version/{{bin}}-$version-x86_64-pc-windows-msvc.zip"
+      },
+      "32bit": {
+        "url": "{{repository}}/releases/download/v$version/{{bin}}-$version-i686-pc-windows-msvc.zip"
+      },
+      "arm64": {
+        "url": "{{repository}}/releases/download/v$version/{{bin}}-$version-aarch64-pc-windows-msvc.zip"
+      }
+    }
+  }
+}

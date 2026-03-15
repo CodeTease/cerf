@@ -1,0 +1,14 @@
+<Project Sdk="WixToolset.Sdk/6.0.0">
+  <PropertyGroup>
+    <OutputName>$(PROJECT_NAME)</OutputName>
+    <DefineConstants>
+      PROJECT_NAME=$(PROJECT_NAME);
+      PROJECT_VERSION=$(PROJECT_VERSION);
+      UPGRADE_CODE=$(UPGRADE_CODE)
+    </DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="main.wxl" />
+    <PackageReference Include="WixToolset.UI.wixext" Version="6.0.0" />
+  </ItemGroup>
+</Project>

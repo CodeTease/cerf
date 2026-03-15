@@ -1,0 +1,79 @@
+[metadata]
+bin = "cerf"
+version = "0.1.0"
+repository = "https://github.com/cerfsh/cerf"
+toolchain = "1.93.1"
+
+license = "Apache-2.0"
+homepage = "https://github.com/cerfsh/cerf"
+maintainer = "CerfSh"
+description = "A shell."
+
+[nfpm]
+enable = true
+
+[archlinux]
+enable = true
+
+[cloudsmith]
+enable = true
+repo = "codetease/cerfsh"
+docs_path = "INSTALLATION.md"
+
+[brew]
+enable = true
+tap = "cerfsh/homebrew-tap"
+
+[scoop]
+enable = true
+bucket = "cerfsh/scoop-bucket"
+
+[nuget]
+enable = true
+authors = "CerfSh"
+
+[crate]
+enable = true
+registries = ["crates.io", "cloudsmith"]
+
+[cloudsmith.targets]
+deb = "ubuntu/noble"
+rpm = "el/9"
+apk = "alpine/any-version"
+
+[msi]
+enable = true
+
+[installer]
+enable = true
+features = ["sh", "ps1"]
+path = "~/.local/bin"
+path-win = "C:/bin/CodeTease"
+
+[docker]
+enable = true
+image_name = "cerf"
+github_org = "cerfsh"
+templates = ["alpine", "debian-slim"]
+registries = ["ghcr", "cloudsmith"]
+cloudsmith_docker_username = "cerfsh"
+
+[targets]
+"aarch64-apple-darwin" = true
+"x86_64-apple-darwin" = true
+"x86_64-pc-windows-msvc" = true
+"x86_64-pc-windows-gnu" = true
+"aarch64-pc-windows-msvc" = true
+"x86_64-unknown-linux-gnu" = true
+"x86_64-unknown-linux-musl" = true
+"aarch64-unknown-linux-gnu" = true
+"aarch64-unknown-linux-musl" = true
+"armv7-unknown-linux-gnueabihf" = true
+"armv7-unknown-linux-musleabihf" = true
+"riscv64gc-unknown-linux-gnu" = true
+"loongarch64-unknown-linux-gnu" = true
+"loongarch64-unknown-linux-musl" = true
+"i686-pc-windows-msvc" = true
+"i686-unknown-linux-gnu" = true
+"s390x-unknown-linux-gnu" = true
+"powerpc64le-unknown-linux-gnu" = true

@@ -1,0 +1,37 @@
+# Maintainer: {{maintainer}}
+pkgname={{bin}}-bin
+pkgver={{version}}
+pkgrel=1
+pkgdesc="{{description}}"
+url="{{repository}}"
+license=('{{license}}')
+options=(!strip !debug)
+provides=('{{bin}}')
+conflicts=('{{bin}}')
+arch=()
+[IF arch.x86_64]
+arch+=('x86_64')
+source_x86_64=("${url}/releases/download/v${pkgver}/{{bin}}-${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
+sha256sums_x86_64=('{{sha256_x86_64}}')
+[/IF]
+[IF arch.aarch64]
+arch+=('aarch64')
+source_aarch64=("${url}/releases/download/v${pkgver}/{{bin}}-${pkgver}-aarch64-unknown-linux-gnu.tar.gz")
+sha256sums_aarch64=('{{sha256_aarch64}}')
+[/IF]
+
+package() {
+    local bin_path=$(find "$srcdir" -type f -name "{{bin}}" -executable | head -n 1)
+    
+    if [ -n "$bin_path" ]; then
+        install -Dm755 "$bin_path" "${pkgdir}/usr/bin/{{bin}}"
+    else
+        echo "Error: Binary {{bin}} not found in $srcdir"
+        return 1
+    fi
+
+    local license_path=$(find "$srcdir" -type f -name "LICENSE" | head -n 1)
+    if [ -n "$license_path" ]; then
+        install -Dm644 "$license_path" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    fi
+}
