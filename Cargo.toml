@@ -2,10 +2,23 @@
 name = "cerf"
 authors = ["CerfSh"]
 version = "0.1.0"
+description = "A shell."
 edition = "2024"
 repository = "https://github.com/cerfsh/cerf"
 homepage = "https://github.com/cerfsh/cerf"
 license = "Apache-2.0"
+keywords = [
+    "cerf",
+    "shell",
+    "codetease",
+    "terminal",
+    "command-line",
+    "cli",
+    "terminal-emulator",
+]
+categories = ["shell", "terminal-emulator", "command-line", "cli"]
+rust-version = "1.93.1"
+include = ["src/**/*", "Cargo.toml", "LICENSE", "README.md"]
 
 [dependencies]
 dirs = "6.0.0"
@@ -17,7 +30,15 @@ rustyline = "17.0.2"
 nix = { version = "0.31.1", features = ["signal", "process", "term"] }
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_System_JobObjects", "Win32_Foundation", "Win32_System_Threading", "Win32_System_IO", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_System_SystemServices"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_System_JobObjects",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_IO",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_System_SystemServices",
+] }
 
 [profile.release]
 strip = true
