@@ -1,0 +1,4 @@
+FROM alpine:latest
+ARG TARGETARCH
+COPY ${TARGETARCH}/{{bin}} /usr/local/bin/{{bin}}
+ENTRYPOINT ["/usr/local/bin/{{bin}}"]
