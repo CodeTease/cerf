@@ -22,7 +22,19 @@ cerf
 
 ## Installation
 
-<!-- Temporary leave nothing for the Installation section -->
+Please go to [Releases](https://github.com/cerfsh/cerf/releases) to download the latest release (and read the guide)
+
+Or see: [INSTALLTION.md](INSTALLTION.md)
+
+Build from source:
+
+```sh
+# Clone the repository
+git clone https://github.com/cerfsh/cerf.git
+
+cd cerf
+cargo build
+```
 
 ### Examples
 
