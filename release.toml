@@ -1,6 +1,6 @@
 [metadata]
 bin = "cerf"
-version = "0.1.0"
+version = "0.1.1"
 repository = "https://github.com/cerfsh/cerf"
 toolchain = "1.93.1"
 
@@ -17,7 +17,7 @@ enable = true
 
 [cloudsmith]
 enable = true
-repo = "codetease/cerfsh"
+repo = "codetease/tools"
 docs_path = "INSTALLTION.md"
 
 [brew]
