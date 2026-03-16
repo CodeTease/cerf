@@ -535,6 +535,16 @@ fn init_default_aliases() -> HashMap<String, String> {
         ("false", "test.false"),
         ("test", "test.check"),
         ("[", "test.check"),
+        ("cat", "fs.cat"),
+        ("less", "fs.less"),
+        ("more", "fs.more"),
+        ("ls", "fs.ls"),
+        ("dir", "fs.ls"),
+        ("mkdir", "fs.mkdir"),
+        ("rm", "fs.rm"),
+        ("cp", "fs.cp"),
+        ("mv", "fs.mv"),
+        ("touch", "fs.touch"),
     ];
     for (name, target) in mappings {
         aliases.insert(name.to_string(), target.to_string());

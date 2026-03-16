@@ -58,6 +58,8 @@ pub const BUILTINS: &[CommandInfo] = &[
     builtins::fs_cmd::COMMAND_INFO_MV,
     builtins::fs_cmd::COMMAND_INFO_CAT,
     builtins::fs_cmd::COMMAND_INFO_LS,
+    builtins::fs_cmd::COMMAND_INFO_LESS,
+    builtins::fs_cmd::COMMAND_INFO_MORE,
 ];
 
 pub fn find_command(name: &str) -> Option<&'static CommandInfo> {
