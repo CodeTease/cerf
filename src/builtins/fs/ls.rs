@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
@@ -6,15 +7,28 @@ use crate::engine::path::expand_home;
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.ls",
     description: "List directory contents.",
-    usage: "fs.ls [path ...]\n\nList information about the FILEs (the current directory by default).",
+    usage: "fs.ls [flags] [path ...]\n\nList information about the FILEs (the current directory by default).\n\nFlags:\n  -F             append indicator (one of */=@|) to entries",
     run: runner,
 };
 
 pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
-    let targets = if args.is_empty() {
+    let mut classify = false;
+    let mut targets = Vec::new();
+
+    for arg in args {
+        if arg.starts_with('-') && arg.len() > 1 {
+            if arg.contains('F') {
+                classify = true;
+            }
+        } else {
+            targets.push(arg.clone());
+        }
+    }
+
+    let targets = if targets.is_empty() {
         vec![".".to_string()]
     } else {
-        args.to_vec()
+        targets
     };
 
     let mut exit_code = 0;
@@ -39,11 +53,12 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                         .filter_map(|e| e.ok())
                         .map(|e| {
                             let name = e.file_name().to_string_lossy().into_owned();
-                            if e.path().is_dir() {
-                                format!("{}/", name)
+                            let symbol = if let Ok(ft) = e.file_type() {
+                                get_symbol(&e.path(), ft, classify)
                             } else {
-                                name
-                            }
+                                ""
+                            };
+                            format!("{}{}", name, symbol)
                         })
                         .collect();
                     names.sort();
@@ -55,8 +70,73 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                 }
             }
         } else {
-            println!("{}", target);
+            let symbol = if let Ok(m) = fs::symlink_metadata(&path) {
+                get_symbol(&path, m.file_type(), classify)
+            } else {
+                ""
+            };
+            println!("{}{}", target, symbol);
         }
     }
     (ExecutionResult::KeepRunning, exit_code)
+}
+
+fn get_symbol(path: &Path, ft: fs::FileType, classify: bool) -> &'static str {
+    // Directories always get / in Cerf (current/pre-existing pattern)
+    if ft.is_dir() {
+        return "/";
+    }
+
+    if !classify {
+        // Support original behavior where directories via symlinks also got /
+        if ft.is_symlink() && path.is_dir() {
+            return "/";
+        }
+        return "";
+    }
+
+    // From here on, classification is enabled (-F)
+    if ft.is_symlink() {
+        return "@";
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt;
+        if ft.is_fifo() {
+            return "|";
+        }
+        if ft.is_socket() {
+            return "=";
+        }
+    }
+
+    if let Ok(m) = fs::metadata(path) {
+        if is_executable(path, &m) {
+            return "*";
+        }
+    }
+
+    ""
+}
+
+fn is_executable(path: &Path, m: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        m.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(windows)]
+    {
+        if let Some(ext) = path.extension() {
+            let ext = ext.to_string_lossy().to_lowercase();
+            matches!(ext.as_str(), "exe" | "bat" | "cmd" | "ps1" | "com")
+        } else {
+            false
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        false
+    }
 }
