@@ -31,4 +31,4 @@ pub mod builtin_cmd;
 pub mod command_cmd;
 pub mod ulimit;
 pub mod umask;
-pub mod fs_cmd;
+pub mod fs;
