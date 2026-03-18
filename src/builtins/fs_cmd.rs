@@ -66,6 +66,27 @@ pub const COMMAND_INFO_MORE: CommandInfo = CommandInfo {
     run: less_runner,
 };
 
+pub const COMMAND_INFO_STAT: CommandInfo = CommandInfo {
+    name: "fs.stat",
+    description: "Display file or file system status.",
+    usage: "fs.stat [file ...]\n\nDisplay file or file system status.",
+    run: stat_runner,
+};
+
+pub const COMMAND_INFO_DU: CommandInfo = CommandInfo {
+    name: "fs.du",
+    description: "Estimate file space usage.",
+    usage: "fs.du [path ...]\n\nSummarize disk usage of each FILE, recursively for directories.",
+    run: du_runner,
+};
+
+pub const COMMAND_INFO_DF: CommandInfo = CommandInfo {
+    name: "fs.df",
+    description: "Report file system disk space usage.",
+    usage: "fs.df\n\nShow information about the file system on which each FILE resides.",
+    run: df_runner,
+};
+
 pub fn mkdir_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
     if args.is_empty() {
         eprintln!("cerf: fs.mkdir: missing operand");
@@ -319,4 +340,127 @@ pub fn less_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult
     }
 
     (ExecutionResult::KeepRunning, 0)
+}
+
+pub fn stat_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    use chrono::{DateTime, Local};
+    use std::os::windows::fs::MetadataExt;
+
+    if args.is_empty() {
+        eprintln!("cerf: fs.stat: missing operand");
+        return (ExecutionResult::KeepRunning, 1);
+    }
+
+    let mut exit_code = 0;
+    for arg in args {
+        let path = expand_home(arg);
+        match fs::metadata(&path) {
+            Ok(meta) => {
+                println!("  File: {}", arg);
+                println!("  Size: {:<15} Blocks: {:<10} IO Block: {:<10} {}", 
+                    meta.len(), 
+                    (meta.len() + 511) / 512, // Rough estimation of 512-byte blocks
+                    4096, // IO block size (typical)
+                    if meta.is_dir() { "directory" } else if meta.is_file() { "regular file" } else { "special file" }
+                );
+                
+                let file_attributes = meta.file_attributes();
+                println!("Device: unknown         Inode: unknown         Links: unknown");
+                println!("Access: ({:o})  Uid: unknown   Gid: unknown", file_attributes & 0o777); // Permissions aren't quite the same on Windows but we show attributes
+                
+                if let Ok(atime) = meta.accessed() {
+                    let dt: DateTime<Local> = atime.into();
+                    println!("Access: {}", dt.format("%Y-%m-%d %H:%M:%S.%f %z"));
+                }
+                if let Ok(mtime) = meta.modified() {
+                    let dt: DateTime<Local> = mtime.into();
+                    println!("Modify: {}", dt.format("%Y-%m-%d %H:%M:%S.%f %z"));
+                }
+                if let Ok(ctime) = meta.created() {
+                    let dt: DateTime<Local> = ctime.into();
+                    println!("Birth:  {}", dt.format("%Y-%m-%d %H:%M:%S.%f %z"));
+                }
+            }
+            Err(e) => {
+                eprintln!("cerf: fs.stat: cannot stat '{}': {}", arg, e);
+                exit_code = 1;
+            }
+        }
+    }
+
+    (ExecutionResult::KeepRunning, exit_code)
+}
+
+pub fn du_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    use jwalk::WalkDir;
+
+    let targets = if args.is_empty() {
+        vec![".".to_string()]
+    } else {
+        args.to_vec()
+    };
+
+    let mut exit_code = 0;
+    for target in targets {
+        let path = expand_home(&target);
+        if !path.exists() {
+            eprintln!("cerf: fs.du: cannot access '{}': No such file or directory", target);
+            exit_code = 1;
+            continue;
+        }
+
+        let mut total_size = 0;
+        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
+            if entry.file_type().is_file() {
+                if let Ok(meta) = entry.metadata() {
+                    let size = meta.len();
+                    total_size += size;
+                    // Streaming: print each file size
+                    println!("{}\t{}", (size + 1023) / 1024, entry.path().display());
+                }
+            }
+        }
+        println!("{}\ttotal", (total_size + 1023) / 1024);
+    }
+
+    (ExecutionResult::KeepRunning, exit_code)
+}
+
+pub fn df_runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    use sysinfo::Disks;
+
+    let disks = Disks::new_with_refreshed_list();
+    println!("{:<20} {:<10} {:<10} {:<10} {:<5} {}", "Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on");
+    
+    for disk in &disks {
+        let total = disk.total_space();
+        let available = disk.available_space();
+        let used = total - available;
+        let use_pct = if total > 0 { (used as f64 / total as f64 * 100.0) as u64 } else { 0 };
+        
+        println!("{:<20} {:<10} {:<10} {:<10} {:>3}% {}", 
+            disk.name().to_string_lossy(),
+            format_size(total),
+            format_size(used),
+            format_size(available),
+            use_pct,
+            disk.mount_point().display()
+        );
+    }
+
+    (ExecutionResult::KeepRunning, 0)
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 * 1024 * 1024 {
+        format!("{:.1}T", bytes as f64 / (1024.0 * 1024.0 * 1024.0 * 1024.0))
+    } else if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.1}G", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else if bytes >= 1024 * 1024 {
+        format!("{:.1}M", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.1}K", bytes as f64 / 1024.0)
+    } else {
+        format!("{}B", bytes)
+    }
 }
