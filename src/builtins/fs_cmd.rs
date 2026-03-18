@@ -344,7 +344,6 @@ pub fn less_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult
 
 pub fn stat_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
     use chrono::{DateTime, Local};
-    use std::os::windows::fs::MetadataExt;
 
     if args.is_empty() {
         eprintln!("cerf: fs.stat: missing operand");
@@ -357,16 +356,57 @@ pub fn stat_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult
         match fs::metadata(&path) {
             Ok(meta) => {
                 println!("  File: {}", arg);
-                println!("  Size: {:<15} Blocks: {:<10} IO Block: {:<10} {}", 
-                    meta.len(), 
+                let file_type = if meta.is_dir() {
+                    "directory"
+                } else if meta.is_file() {
+                    "regular file"
+                } else if meta.file_type().is_symlink() {
+                    "symbolic link"
+                } else {
+                    "special file"
+                };
+
+                println!(
+                    "  Size: {:<15} Blocks: {:<10} IO Block: {:<10} {}",
+                    meta.len(),
                     (meta.len() + 511) / 512, // Rough estimation of 512-byte blocks
-                    4096, // IO block size (typical)
-                    if meta.is_dir() { "directory" } else if meta.is_file() { "regular file" } else { "special file" }
+                    4096,                     // IO block size (typical)
+                    file_type
                 );
-                
-                let file_attributes = meta.file_attributes();
-                println!("Device: unknown         Inode: unknown         Links: unknown");
-                println!("Access: ({:o})  Uid: unknown   Gid: unknown", file_attributes & 0o777); // Permissions aren't quite the same on Windows but we show attributes
+
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    let file_attributes = meta.file_attributes();
+                    println!("Device: unknown         Inode: unknown         Links: unknown");
+                    println!(
+                        "Access: ({:o})  Uid: unknown   Gid: unknown",
+                        file_attributes & 0o777
+                    );
+                }
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    println!(
+                        "Device: {:<15x} Inode: {:<15} Links: {}",
+                        meta.dev(),
+                        meta.ino(),
+                        meta.nlink()
+                    );
+                    println!(
+                        "Access: ({:04o})  Uid: ({:5})   Gid: ({:5})",
+                        meta.mode() & 0o7777,
+                        meta.uid(),
+                        meta.gid()
+                    );
+                }
+
+                #[cfg(not(any(windows, unix)))]
+                {
+                    println!("Device: unknown         Inode: unknown         Links: unknown");
+                    println!("Access: unknown         Uid: unknown           Gid: unknown");
+                }
                 
                 if let Ok(atime) = meta.accessed() {
                     let dt: DateTime<Local> = atime.into();
