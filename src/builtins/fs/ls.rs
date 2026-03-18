@@ -7,18 +7,25 @@ use crate::engine::path::expand_home;
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.ls",
     description: "List directory contents.",
-    usage: "fs.ls [flags] [path ...]\n\nList information about the FILEs (the current directory by default).\n\nFlags:\n  -F             append indicator (one of */=@|) to entries",
+    usage: "fs.ls [flags] [path ...]\n\nList information about the FILEs (the current directory by default).\n\nFlags:\n  -a             do not ignore entries starting with .\n  -A             do not list implied . and ..\n  -F             append indicator (one of */=@|) to entries",
     run: runner,
 };
 
 pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
+    let mut all = false;
+    let mut almost_all = false;
     let mut classify = false;
     let mut targets = Vec::new();
 
     for arg in args {
         if arg.starts_with('-') && arg.len() > 1 {
-            if arg.contains('F') {
-                classify = true;
+            for c in arg[1..].chars() {
+                match c {
+                    'a' => { all = true; almost_all = false; }
+                    'A' => { almost_all = true; all = false; }
+                    'F' => classify = true,
+                    _ => {}
+                }
             }
         } else {
             targets.push(arg.clone());
@@ -51,6 +58,15 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                 Ok(entries) => {
                     let mut names: Vec<_> = entries
                         .filter_map(|e| e.ok())
+                        .filter(|e| {
+                            let name = e.file_name();
+                            let name_str = name.to_string_lossy();
+                            if all || almost_all {
+                                true
+                            } else {
+                                !name_str.starts_with('.')
+                            }
+                        })
                         .map(|e| {
                             let name = e.file_name().to_string_lossy().into_owned();
                             let symbol = if let Ok(ft) = e.file_type() {
@@ -61,6 +77,13 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                             format!("{}{}", name, symbol)
                         })
                         .collect();
+
+                    if all {
+                        let dot_symbol = if classify { "/" } else { "" };
+                        names.push(format!(".{}", dot_symbol));
+                        names.push(format!("..{}", dot_symbol));
+                    }
+
                     names.sort();
                     println!("{}", names.join("  "));
                 }
