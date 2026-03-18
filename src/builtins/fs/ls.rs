@@ -82,20 +82,14 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
 }
 
 fn get_symbol(path: &Path, ft: fs::FileType, classify: bool) -> &'static str {
-    // Directories always get / in Cerf (current/pre-existing pattern)
+    if !classify {
+        return "";
+    }
+
     if ft.is_dir() {
         return "/";
     }
 
-    if !classify {
-        // Support original behavior where directories via symlinks also got /
-        if ft.is_symlink() && path.is_dir() {
-            return "/";
-        }
-        return "";
-    }
-
-    // From here on, classification is enabled (-F)
     if ft.is_symlink() {
         return "@";
     }
