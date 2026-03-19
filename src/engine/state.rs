@@ -311,21 +311,7 @@ fn init_env_vars() -> HashMap<String, String> {
 
     // Helper to get temp dir
     fn temp_dir(_vars: &HashMap<String, String>) -> String {
-        #[cfg(windows)]
-        {
-            if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
-                return appdata;
-            } else if let Some(home) = _vars.get("HOME") {
-                return format!("{}\\AppData\\Local", home);
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            if let Some(home) = _vars.get("HOME") {
-                return format!("{}/.tmp", home);
-            }
-        }
-        "/tmp".to_string()
+        std::env::temp_dir().to_string_lossy().to_string()
     }
 
     // Helper to get user name
