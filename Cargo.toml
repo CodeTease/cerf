@@ -27,6 +27,9 @@ sysinfo = "0.33.1"
 jwalk = "0.8.1"
 chrono = "0.4.39"
 
+[dev-dependencies]
+tempfile = "3"
+
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31.1", features = ["signal", "process", "term"] }
 
