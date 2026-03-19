@@ -18,7 +18,7 @@ enable = true
 [cloudsmith]
 enable = true
 repo = "codetease/tools"
-docs_path = "INSTALLTION.md"
+docs_path = "INSTALLATION.md"
 
 [brew]
 enable = true
@@ -34,7 +34,7 @@ authors = "CerfSh"
 
 [crate]
 enable = true
-registries = ["crates.io", "cloudsmith"]
+registries = ["cloudsmith"]
 
 [cloudsmith.targets]
 deb = "ubuntu/noble"

@@ -24,7 +24,7 @@ cerf
 
 Please go to [Releases](https://github.com/cerfsh/cerf/releases) to download the latest release (and read the guide)
 
-Or see: [INSTALLTION.md](INSTALLTION.md)
+Or see: [INSTALLATION.md](INSTALLATION.md)
 
 Build from source:
 
