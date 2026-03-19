@@ -9,6 +9,9 @@ pub struct LsArgs {
     pub reverse: bool,
     pub single_column: bool,
     pub targets: Vec<String>,
+    pub recursive: bool,
+    pub group_directories_first: bool,
+    pub quote_name: bool,
 }
 
 impl LsArgs {
@@ -22,10 +25,20 @@ impl LsArgs {
         let mut sort_size = false;
         let mut reverse = false;
         let mut single_column = false;
+        let mut recursive = false;
+        let mut group_directories_first = false;
+        let mut quote_name = false;
         let mut targets = Vec::new();
 
         for arg in args {
-            if arg.starts_with('-') && arg.len() > 1 {
+            if arg == "--group-directories-first" {
+                group_directories_first = true;
+                continue;
+            }
+            if arg.starts_with("--") {
+                // Ignore other unknown double-dash flags
+                continue;
+            } else if arg.starts_with('-') && arg.len() > 1 {
                 for c in arg[1..].chars() {
                     match c {
                         'a' => {
@@ -43,6 +56,8 @@ impl LsArgs {
                         'S' => sort_size = true,
                         'r' => reverse = true,
                         '1' => single_column = true,
+                        'R' => recursive = true,
+                        'Q' => quote_name = true,
                         _ => {}
                     }
                 }
@@ -67,6 +82,9 @@ impl LsArgs {
             sort_size,
             reverse,
             single_column,
+            recursive,
+            group_directories_first,
+            quote_name,
             targets,
         }
     }

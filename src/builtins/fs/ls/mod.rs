@@ -14,7 +14,7 @@ pub use parser::LsArgs;
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.ls",
     description: "List directory contents.",
-    usage: "fs.ls [flags] [path ...]\n\nList information about the FILEs (the current directory by default).\n\nFlags:\n  -a             do not ignore entries starting with .\n  -A             do not list implied . and ..\n  -F             append indicator (one of */=@|) to entries\n  -l             use a long listing format\n  -h             print human readable sizes\n  -t             sort by modification time\n  -S             sort by file size, largest first\n  -r             reverse order while sorting\n  -1             list one file per line",
+    usage: "fs.ls [flags] [path ...]\n\nList information about the FILEs (the current directory by default).\n\nFlags:\n  -a             do not ignore entries starting with .\n  -A             do not list implied . and ..\n  -F             append indicator (one of */=@|) to entries\n  -l             use a long listing format\n  -h             print human readable sizes\n  -t             sort by modification time\n  -S             sort by file size, largest first\n  -r             reverse order while sorting\n  -1             list one file per line\n  -R             list subdirectories recursively\n  --group-directories-first\n                 group directories before files\n  -Q             enclose entry names in double quotes",
     run: runner,
 };
 
@@ -31,15 +31,29 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
     let parsed_args = LsArgs::parse(args);
 
     let mut exit_code = 0;
-    let multiple = parsed_args.targets.len() > 1;
 
-    for (i, target) in parsed_args.targets.iter().enumerate() {
-        let path = expand_home(target);
+    let mut queue: Vec<(PathBuf, String)> = parsed_args
+        .targets
+        .iter()
+        .map(|t| (expand_home(t), t.clone()))
+        .rev()
+        .collect();
+
+    let multiple = queue.len() > 1 || parsed_args.recursive;
+    let mut first_dir = true;
+
+    while let Some((path, target)) = queue.pop() {
+        let label_target = if parsed_args.quote_name {
+            format!("\"{}\"", target.replace("\"", "\\\""))
+        } else {
+            target.clone()
+        };
+
         if !path.exists() {
             let _ = writeln!(
                 stderr,
                 "cerf: fs.ls: cannot access '{}': No such file or directory",
-                target
+                label_target
             );
             exit_code = 1;
             continue;
@@ -47,10 +61,13 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
 
         if path.is_dir() {
             if multiple {
-                if i > 0 {
+                if !first_dir {
                     let _ = writeln!(stdout);
                 }
-                let _ = writeln!(stdout, "{}:", target);
+                first_dir = false;
+                let _ = writeln!(stdout, "{}:", label_target);
+            } else {
+                first_dir = false;
             }
             match fs::read_dir(&path) {
                 Ok(read_dir) => {
@@ -65,8 +82,16 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                             dir_entries.push((entry.path(), name));
                         }
                     }
-                    if parsed_args.sort_time {
-                        dir_entries.sort_by(|a, b| {
+                    dir_entries.sort_by(|a, b| {
+                        if parsed_args.group_directories_first {
+                            let a_is_dir = a.0.is_dir();
+                            let b_is_dir = b.0.is_dir();
+                            if a_is_dir != b_is_dir {
+                                return if a_is_dir { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+                            }
+                        }
+
+                        let cmp = if parsed_args.sort_time {
                             let m_a = fs::symlink_metadata(&a.0).and_then(|m| m.modified());
                             let m_b = fs::symlink_metadata(&b.0).and_then(|m| m.modified());
                             match (m_a, m_b) {
@@ -75,19 +100,42 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                                 (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
                                 (Err(_), Err(_)) => a.1.cmp(&b.1),
                             }
-                        });
-                    } else if parsed_args.sort_size {
-                        dir_entries.sort_by(|a, b| {
+                        } else if parsed_args.sort_size {
                             let s_a = fs::symlink_metadata(&a.0).map(|m| m.len()).unwrap_or(0);
                             let s_b = fs::symlink_metadata(&b.0).map(|m| m.len()).unwrap_or(0);
                             s_b.cmp(&s_a)
-                        });
-                    } else {
-                        dir_entries.sort_by(|a, b| a.1.cmp(&b.1));
+                        } else {
+                            a.1.cmp(&b.1)
+                        };
+
+                        if parsed_args.reverse {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        }
+                    });
+
+                    if parsed_args.recursive {
+                        let mut subdirs = Vec::new();
+                        for (p, n) in &dir_entries {
+                            if p.is_dir() && n != "." && n != ".." {
+                                let child_target = if target.ends_with('/') || target.ends_with('\\') {
+                                    format!("{}{}", target, n)
+                                } else {
+                                    format!("{}/{}", target, n)
+                                };
+                                subdirs.push((p.clone(), child_target));
+                            }
+                        }
+                        for sd in subdirs.into_iter().rev() {
+                            queue.push(sd);
+                        }
                     }
 
-                    if parsed_args.reverse {
-                        dir_entries.reverse();
+                    if parsed_args.quote_name {
+                        for entry in &mut dir_entries {
+                            entry.1 = format!("\"{}\"", entry.1.replace("\"", "\\\""));
+                        }
                     }
 
                     if parsed_args.long_format {
@@ -123,16 +171,17 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                     let _ = writeln!(
                         stderr,
                         "cerf: fs.ls: cannot open directory '{}': {}",
-                        target, e
+                        label_target, e
                     );
                     exit_code = 1;
                 }
             }
         } else {
             if parsed_args.long_format {
+                let fake_entries = vec![(path.clone(), label_target.clone())];
                 display_long(
                     stdout,
-                    &[(path.clone(), target.clone())],
+                    &fake_entries,
                     parsed_args.classify,
                     false,
                     parsed_args.human_readable,
@@ -143,7 +192,7 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                 } else {
                     ""
                 };
-                let _ = writeln!(stdout, "{}{}", target, symbol);
+                let _ = writeln!(stdout, "{}{}", label_target, symbol);
             }
         }
     }
