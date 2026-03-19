@@ -64,6 +64,10 @@ fn main() -> rustyline::Result<()> {
         }
         return Ok(());
     }
+    else if args.len() == 2 && args[1] == "--version" {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
 
     // Source the user profile (~/.cerfrc) for interactive sessions.
     source_profile(&mut state);

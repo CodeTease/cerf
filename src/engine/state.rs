@@ -480,6 +480,10 @@ fn init_env_vars() -> HashMap<String, String> {
             vars.insert("UID".to_string(), uid);
         }
     }
+    // 20. Ensure CERF_VERSION is set
+    if !vars.contains_key("CERF_VERSION") {
+        vars.insert("CERF_VERSION".to_string(), env!("CARGO_PKG_VERSION").to_string());
+    }
     // Sync environment variables that we just added defaults for
     for (key, val) in &vars {
         if std::env::var(key).is_err() {
