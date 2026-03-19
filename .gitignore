@@ -3,3 +3,5 @@
 *.vegh
 .veghcache/
 .p/
+p.*.toml
+!p.toml
