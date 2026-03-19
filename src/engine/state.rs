@@ -277,31 +277,28 @@ impl ShellState {
 
     /// Load history entries from `~/.cerf_history` (if it exists).
     pub fn load_history(&mut self) {
-        if let Some(path) = Self::history_path() {
-            if path.exists() {
-                if let Ok(contents) = std::fs::read_to_string(&path) {
+        if let Some(path) = Self::history_path()
+            && path.exists()
+                && let Ok(contents) = std::fs::read_to_string(&path) {
                     self.history = contents
                         .lines()
                         .filter(|l| !l.is_empty())
                         .map(|l| l.to_string())
                         .collect();
                 }
-            }
-        }
     }
 
     /// Append a single line to the in-memory history and to `~/.cerf_history`.
     pub fn add_history(&mut self, line: &str) {
         self.history.push(line.to_string());
-        if let Some(path) = Self::history_path() {
-            if let Ok(mut f) = std::fs::OpenOptions::new()
+        if let Some(path) = Self::history_path()
+            && let Ok(mut f) = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(path)
             {
                 let _ = writeln!(f, "{}", line);
             }
-        }
     }
 
     /// Return the path to `~/.cerf_history`.
@@ -330,8 +327,8 @@ fn init_env_vars() -> HashMap<String, String> {
     fn user_name(_vars: &HashMap<String, String>) -> String {
         #[cfg(windows)]
         {
-            let user = std::env::var("USERNAME").unwrap_or_else(|_| "unknown".to_string());
-            return user;
+            
+            std::env::var("USERNAME").unwrap_or_else(|_| "unknown".to_string())
         }
         #[cfg(not(windows))]
         {
@@ -386,11 +383,10 @@ fn init_env_vars() -> HashMap<String, String> {
     }
 
     // 5. Ensure PWD is set
-    if !vars.contains_key("PWD") {
-        if let Ok(cwd) = std::env::current_dir() {
+    if !vars.contains_key("PWD")
+        && let Ok(cwd) = std::env::current_dir() {
             vars.insert("PWD".to_string(), cwd.to_string_lossy().to_string());
         }
-    }
 
     // 6. Ensure XDG_CONFIG_HOME is set
     if !vars.contains_key("XDG_CONFIG_HOME") {
@@ -439,11 +435,10 @@ fn init_env_vars() -> HashMap<String, String> {
         vars.insert("LANG".to_string(), "en_US.UTF-8".to_string());
     }
     // 11. Ensure HISTFILE is set
-    if !vars.contains_key("HISTFILE") {
-        if let Some(home) = vars.get("HOME") {
+    if !vars.contains_key("HISTFILE")
+        && let Some(home) = vars.get("HOME") {
             vars.insert("HISTFILE".to_string(), format!("{}/.cerf_history", home));
         }
-    }
     // 12. Ensure HISTFILESIZE is set
     if !vars.contains_key("HISTFILESIZE") {
         vars.insert("HISTFILESIZE".to_string(), "10000".to_string());

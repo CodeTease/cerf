@@ -29,8 +29,8 @@ pub fn expand_alias(cmd: &mut CommandNode, aliases: &HashMap<String, String>) ->
             return false;
         }
         simple.name = Some(tokens[0].clone());
-        let mut new_args: Vec<Arg> = tokens[1..].iter().map(|t| Arg::plain(t)).collect();
-        new_args.extend(simple.args.drain(..));
+        let mut new_args: Vec<Arg> = tokens[1..].iter().map(Arg::plain).collect();
+        new_args.append(&mut simple.args);
         simple.args = new_args;
         return true;
     }
@@ -43,9 +43,9 @@ fn shell_split(s: &str) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut in_single = false;
-    let mut chars = s.chars().peekable();
+    let chars = s.chars().peekable();
 
-    while let Some(ch) = chars.next() {
+    for ch in chars {
         match ch {
             '\'' if !in_single => in_single = true,
             '\'' if in_single => in_single = false,

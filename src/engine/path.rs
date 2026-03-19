@@ -37,11 +37,10 @@ pub fn expand_home(path_str: &str) -> PathBuf {
         if let Some(home) = dirs::home_dir() {
             return home;
         }
-    } else if path_str.starts_with("~/") || path_str.starts_with("~\\") {
-        if let Some(home) = dirs::home_dir() {
+    } else if (path_str.starts_with("~/") || path_str.starts_with("~\\"))
+        && let Some(home) = dirs::home_dir() {
             return normalize_path(&home.join(&path_str[2..]));
         }
-    }
     normalize_path(Path::new(path_str))
 }
 
@@ -65,11 +64,10 @@ pub fn find_executable(cmd: &str) -> Option<PathBuf> {
     // 3. Search current directory on Windows (traditional behavior)
     #[cfg(windows)]
     {
-        if let Ok(cwd) = std::env::current_dir() {
-            if let Some(found) = check_path(cwd.join(cmd)) {
+        if let Ok(cwd) = std::env::current_dir()
+            && let Some(found) = check_path(cwd.join(cmd)) {
                 return Some(found);
             }
-        }
     }
 
     None
@@ -96,11 +94,10 @@ fn check_path(p: PathBuf) -> Option<PathBuf> {
         // 1. If it already has an extension that's in PATHEXT, try it as is first.
         if let Some(ext) = p.extension() {
             let ext_dot = format!(".{}", ext.to_string_lossy().to_uppercase());
-            if pathext_list.iter().any(|e| e == &ext_dot) {
-                if p.is_file() {
+            if pathext_list.iter().any(|e| e == &ext_dot)
+                && p.is_file() {
                     return Some(p);
                 }
-            }
         }
 
         // 2. Try appending extensions from PATHEXT.

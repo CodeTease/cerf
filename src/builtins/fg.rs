@@ -21,16 +21,14 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         } else if let Some(&id) = state.jobs.keys().max() {
             job_id = Some(id);
         }
+    } else if let Ok(id) = crate::engine::job_control::resolve_job_specifier(&args[0], state) {
+        job_id = Some(id);
     } else {
-        if let Ok(id) = crate::engine::job_control::resolve_job_specifier(&args[0], state) {
-            job_id = Some(id);
-        } else {
-            eprintln!(
-                "cerf: fg: {}",
-                crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err()
-            );
-            return 1;
-        }
+        eprintln!(
+            "cerf: fg: {}",
+            crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err()
+        );
+        return 1;
     }
 
     if let Some(id) = job_id {
@@ -53,7 +51,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                     crate::builtins::kill_cmd::suspend_or_resume_process_win(pid, false);
                 }
                 crate::engine::job_control::set_current_job(state, id);
-                return crate::engine::job_control::wait_for_job(id, state, true);
+                crate::engine::job_control::wait_for_job(id, state, true)
             }
         } else {
             eprintln!("cerf: fg: %{}: no such job", id);

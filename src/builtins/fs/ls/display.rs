@@ -45,11 +45,10 @@ pub fn get_symbol(path: &Path, ft: fs::FileType, classify: bool) -> &'static str
         }
     }
 
-    if let Ok(m) = fs::metadata(path) {
-        if is_executable(path, &m) {
+    if let Ok(m) = fs::metadata(path)
+        && is_executable(path, &m) {
             return "*";
         }
-    }
 
     ""
 }
@@ -83,13 +82,12 @@ pub fn display_long<W: std::io::Write>(
             let symbol = get_symbol(p, m.file_type(), classify);
 
             let mut display_name = name.clone();
-            if m.file_type().is_symlink() {
-                if let Ok(target) = fs::read_link(p) {
+            if m.file_type().is_symlink()
+                && let Ok(target) = fs::read_link(p) {
                     display_name = format!("{} -> {}", display_name, target.display());
                 }
-            }
 
-            total_blocks += (m.len() + 511) / 512;
+            total_blocks += m.len().div_ceil(512);
             max_nlink = max_nlink.max(nlink);
             max_size = max_size.max(size_str.len());
             max_user = max_user.max(user.len());

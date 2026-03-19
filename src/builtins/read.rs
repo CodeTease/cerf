@@ -104,29 +104,25 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
             } else {
                 remaining
             }
-        } else {
-            if ifs == " \t\n" {
-                remaining = remaining.trim_start();
-                if let Some(pos) = remaining.find(|c: char| c.is_whitespace()) {
-                    let word = &remaining[..pos];
-                    remaining = &remaining[pos..];
-                    word
-                } else {
-                    let word = remaining;
-                    remaining = "";
-                    word
-                }
+        } else if ifs == " \t\n" {
+            remaining = remaining.trim_start();
+            if let Some(pos) = remaining.find(|c: char| c.is_whitespace()) {
+                let word = &remaining[..pos];
+                remaining = &remaining[pos..];
+                word
             } else {
-                if let Some(pos) = remaining.find(|c| ifs.contains(c)) {
-                    let word = &remaining[..pos];
-                    remaining = &remaining[pos + 1..];
-                    word
-                } else {
-                    let word = remaining;
-                    remaining = "";
-                    word
-                }
+                let word = remaining;
+                remaining = "";
+                word
             }
+        } else if let Some(pos) = remaining.find(|c| ifs.contains(c)) {
+            let word = &remaining[..pos];
+            remaining = &remaining[pos + 1..];
+            word
+        } else {
+            let word = remaining;
+            remaining = "";
+            word
         };
 
         state.set_var(
@@ -135,7 +131,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
         );
         if std::env::var(var_name).is_ok() {
             unsafe {
-                std::env::set_var(var_name, val.to_string());
+                std::env::set_var(var_name, val);
             }
         }
     }

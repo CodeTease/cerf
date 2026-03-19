@@ -176,11 +176,10 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
     // pipe or end-of-input.
     loop {
         // Check if the next word is a brace
-        if let Ok((r2, _)) = space0::<_, nom::error::Error<&str>>(rest) {
-            if r2.starts_with('{') || r2.starts_with('}') {
+        if let Ok((r2, _)) = space0::<_, nom::error::Error<&str>>(rest)
+            && (r2.starts_with('{') || r2.starts_with('}')) {
                 break;
             }
-        }
 
         // Try redirects first (they start with > or <)
         if let Ok((after_redir, redir)) = parse_redirect(rest) {
@@ -304,12 +303,11 @@ fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
 
     let mut items = Vec::new();
     loop {
-        if let Ok((r, _)) = multispace0::<_, nom::error::Error<&str>>(rest) {
-            if r.starts_with('{') {
+        if let Ok((r, _)) = multispace0::<_, nom::error::Error<&str>>(rest)
+            && r.starts_with('{') {
                 rest = r;
                 break;
             }
-        }
 
         match parse_arg(rest) {
             Ok((after_arg, arg)) => {
@@ -413,9 +411,8 @@ pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
     let (input, _) = multispace0(input)?;
 
     // Check for logical NOT operator '!'
-    let (rest, negated) = if input.starts_with('!') {
+    let (rest, negated) = if let Some(after_bang) = input.strip_prefix('!') {
         // '!' must be its own token or followed by whitespace
-        let after_bang = &input[1..];
         if after_bang.is_empty() || after_bang.starts_with(char::is_whitespace) {
             (after_bang, true)
         } else {

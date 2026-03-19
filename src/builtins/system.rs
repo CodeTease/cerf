@@ -89,7 +89,7 @@ pub fn exec(args: &[String]) -> Result<i32, String> {
     // ── Windows: spawn + exit (best-effort emulation) ────────────────
     #[cfg(windows)]
     {
-        let is_batch = resolved.extension().map_or(false, |e| {
+        let is_batch = resolved.extension().is_some_and(|e| {
             let e = e.to_string_lossy().to_lowercase();
             e == "cmd" || e == "bat"
         });

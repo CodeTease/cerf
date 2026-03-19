@@ -99,7 +99,7 @@ fn main() -> rustyline::Result<()> {
 
                 if res != 0 {
                     let msg = num_bytes;
-                    let event_job_id = comp_key as usize;
+                    let event_job_id = comp_key;
                     let pid = overlapped as usize as u32;
 
                     let is_active_zero = msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO;
@@ -179,12 +179,8 @@ fn main() -> rustyline::Result<()> {
                 let _ = rl.add_history_entry(&input);
                 state.add_history(&input);
 
-                if let Some(entries) = parser::parse_pipeline(&input, &state.variables) {
-                    match engine::execute_list(entries, &mut state) {
-                        (engine::ExecutionResult::Exit, _) => break,
-                        _ => {}
-                    }
-                }
+                if let Some(entries) = parser::parse_pipeline(&input, &state.variables)
+                    && let (engine::ExecutionResult::Exit, _) = engine::execute_list(entries, &mut state) { break }
             }
             Err(ReadlineError::Interrupted) => {
                 input_buffer.clear();

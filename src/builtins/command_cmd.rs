@@ -25,7 +25,7 @@ pub fn command_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
 
     #[cfg(windows)]
     let mut command = {
-        let is_batch = resolved.extension().map_or(false, |e| {
+        let is_batch = resolved.extension().is_some_and(|e| {
             let e = e.to_string_lossy().to_lowercase();
             e == "cmd" || e == "bat"
         });

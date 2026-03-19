@@ -62,14 +62,14 @@ pub fn is_incomplete(input: &str) -> bool {
     while let Some(ch) = chars.next() {
         match ch {
             '"' => {
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     if c == '"' {
                         break;
                     }
                 }
             }
             '\'' => {
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     if c == '\'' {
                         break;
                     }

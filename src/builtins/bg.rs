@@ -21,16 +21,14 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         } else if let Some(&id) = state.jobs.keys().max() {
             job_id = Some(id);
         }
+    } else if let Ok(id) = crate::engine::job_control::resolve_job_specifier(&args[0], state) {
+        job_id = Some(id);
     } else {
-        if let Ok(id) = crate::engine::job_control::resolve_job_specifier(&args[0], state) {
-            job_id = Some(id);
-        } else {
-            eprintln!(
-                "cerf: bg: {}",
-                crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err()
-            );
-            return 1;
-        }
+        eprintln!(
+            "cerf: bg: {}",
+            crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err()
+        );
+        return 1;
     }
 
     if let Some(id) = job_id {

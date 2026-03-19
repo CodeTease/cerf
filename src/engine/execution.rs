@@ -219,7 +219,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
 
         #[cfg(windows)]
         let mut command = {
-            let is_batch = resolved.extension().map_or(false, |e| {
+            let is_batch = resolved.extension().is_some_and(|e| {
                 let e = e.to_string_lossy().to_lowercase();
                 e == "cmd" || e == "bat"
             });
@@ -434,15 +434,14 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                         break;
                     }
                 }
-                if !executed {
-                    if let Some(body) = else_branch {
+                if !executed
+                    && let Some(body) = else_branch {
                         let (res, body_code) = execute_list(body.clone(), state);
                         if !matches!(res, ExecutionResult::KeepRunning) {
                             return (res, body_code);
                         }
                         final_code = body_code;
                     }
-                }
                 let code = if pipeline.negated {
                     if final_code == 0 { 1 } else { 0 }
                 } else {
@@ -642,7 +641,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
         #[cfg(windows)]
         let mut command = {
-            let is_batch = resolved.extension().map_or(false, |e| {
+            let is_batch = resolved.extension().is_some_and(|e| {
                 let e = e.to_string_lossy().to_lowercase();
                 e == "cmd" || e == "bat"
             });

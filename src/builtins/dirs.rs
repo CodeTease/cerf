@@ -64,7 +64,7 @@ pub fn pushd(
 
         let top = state.dir_stack.pop().unwrap();
 
-        if let Err(_) = env::set_current_dir(&top) {
+        if env::set_current_dir(&top).is_err() {
             state.dir_stack.push(top.clone());
             return Err(format!(
                 "pushd: no such file or directory: {}",
@@ -81,7 +81,7 @@ pub fn pushd(
 
     let target = crate::engine::expand_home(&args[0]);
 
-    if let Err(_) = env::set_current_dir(&target) {
+    if env::set_current_dir(&target).is_err() {
         return Err(format!(
             "pushd: no such file or directory: {}",
             target.display()
@@ -107,7 +107,7 @@ pub fn popd(
     let current = env::current_dir().map_err(|e| e.to_string())?;
     let target = state.dir_stack.pop().unwrap();
 
-    if let Err(_) = env::set_current_dir(&target) {
+    if env::set_current_dir(&target).is_err() {
         state.dir_stack.push(target.clone());
         return Err(format!(
             "popd: no such file or directory: {}",

@@ -181,24 +181,22 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                     exit_code = 1;
                 }
             }
+        } else if parsed_args.long_format {
+            let fake_entries = vec![(path.clone(), label_target.clone())];
+            display_long(
+                stdout,
+                &fake_entries,
+                parsed_args.classify,
+                false,
+                parsed_args.human_readable,
+            );
         } else {
-            if parsed_args.long_format {
-                let fake_entries = vec![(path.clone(), label_target.clone())];
-                display_long(
-                    stdout,
-                    &fake_entries,
-                    parsed_args.classify,
-                    false,
-                    parsed_args.human_readable,
-                );
+            let symbol = if let Ok(m) = fs::symlink_metadata(&path) {
+                get_symbol(&path, m.file_type(), parsed_args.classify)
             } else {
-                let symbol = if let Ok(m) = fs::symlink_metadata(&path) {
-                    get_symbol(&path, m.file_type(), parsed_args.classify)
-                } else {
-                    ""
-                };
-                let _ = writeln!(stdout, "{}{}", label_target, symbol);
-            }
+                ""
+            };
+            let _ = writeln!(stdout, "{}{}", label_target, symbol);
         }
     }
     (ExecutionResult::KeepRunning, exit_code)

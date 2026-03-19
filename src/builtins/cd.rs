@@ -45,7 +45,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
         crate::engine::expand_home(&args[0])
     };
 
-    if let Err(_) = env::set_current_dir(&target) {
+    if env::set_current_dir(&target).is_err() {
         // Standard error message
         return Err(format!("no such file or directory: {}", target.display()));
     }

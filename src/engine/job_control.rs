@@ -292,7 +292,7 @@ pub fn format_command(pipeline: &crate::parser::Pipeline) -> String {
     pipeline
         .commands
         .iter()
-        .map(|c| format_node_full(c))
+        .map(format_node_full)
         .collect::<Vec<_>>()
         .join(" | ")
         + if pipeline.background { " &" } else { "" }

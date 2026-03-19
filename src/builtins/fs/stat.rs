@@ -36,7 +36,7 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                 println!(
                     "  Size: {:<15} Blocks: {:<10} IO Block: {:<10} {}",
                     meta.len(),
-                    (meta.len() + 511) / 512, // Rough estimation of 512-byte blocks
+                    meta.len().div_ceil(512), // Rough estimation of 512-byte blocks
                     4096,                     // IO block size (typical)
                     file_type
                 );

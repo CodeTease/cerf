@@ -65,12 +65,10 @@ fn set_tether(args: &[String], state: &mut ShellState, tether: bool) -> i32 {
                             if success == 0 {
                                 eprintln!("cerf: failed to set tether on job {}", id);
                                 code = 1;
+                            } else if tether {
+                                println!("[{}] tethered", id);
                             } else {
-                                if tether {
-                                    println!("[{}] tethered", id);
-                                } else {
-                                    println!("[{}] untethered", id);
-                                }
+                                println!("[{}] untethered", id);
                             }
                         }
                     }

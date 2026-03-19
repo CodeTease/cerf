@@ -9,8 +9,8 @@ pub const COMMAND_INFO_ULIMIT: CommandInfo = CommandInfo {
 };
 
 pub fn ulimit_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
-    if !args.is_empty() {
-        if args[0] == "-a" || args[0] == "-aH" || args[0] == "-aS" {
+    if !args.is_empty()
+        && (args[0] == "-a" || args[0] == "-aH" || args[0] == "-aS") {
             println!("core file size          (blocks, -c) 0");
             println!("data seg size           (kbytes, -d) unlimited");
             println!("scheduling priority             (-e) 0");
@@ -29,7 +29,6 @@ pub fn ulimit_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResu
             println!("file locks                      (-x) unlimited");
             return (ExecutionResult::KeepRunning, 0);
         }
-    }
 
     println!("unlimited");
     (ExecutionResult::KeepRunning, 0)

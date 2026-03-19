@@ -13,8 +13,8 @@ pub const COMMAND_INFO: CommandInfo = CommandInfo {
 pub fn runner(_args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
     let disks = Disks::new_with_refreshed_list();
     println!(
-        "{:<20} {:<10} {:<10} {:<10} {:<5} {}",
-        "Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"
+        "{:<20} {:<10} {:<10} {:<10} {:<5} Mounted on",
+        "Filesystem", "Size", "Used", "Avail", "Use%"
     );
 
     for disk in &disks {
