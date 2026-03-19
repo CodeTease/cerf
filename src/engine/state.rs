@@ -311,21 +311,7 @@ fn init_env_vars() -> HashMap<String, String> {
 
     // Helper to get temp dir
     fn temp_dir(_vars: &HashMap<String, String>) -> String {
-        #[cfg(windows)]
-        {
-            if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
-                return appdata;
-            } else if let Some(home) = _vars.get("HOME") {
-                return format!("{}\\AppData\\Local", home);
-            }
-        }
-        #[cfg(not(windows))]
-        {
-            if let Some(home) = _vars.get("HOME") {
-                return format!("{}/.tmp", home);
-            }
-        }
-        "/tmp".to_string()
+        std::env::temp_dir().to_string_lossy().to_string()
     }
 
     // Helper to get user name
@@ -535,6 +521,19 @@ fn init_default_aliases() -> HashMap<String, String> {
         ("false", "test.false"),
         ("test", "test.check"),
         ("[", "test.check"),
+        ("cat", "fs.cat"),
+        ("less", "fs.less"),
+        ("more", "fs.more"),
+        ("ls", "fs.ls"),
+        ("dir", "fs.ls"),
+        ("mkdir", "fs.mkdir"),
+        ("rm", "fs.rm"),
+        ("cp", "fs.cp"),
+        ("mv", "fs.mv"),
+        ("touch", "fs.touch"),
+        ("stat", "fs.stat"),
+        ("du", "fs.du"),
+        ("df", "fs.df"),
     ];
     for (name, target) in mappings {
         aliases.insert(name.to_string(), target.to_string());

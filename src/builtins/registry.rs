@@ -51,6 +51,18 @@ pub const BUILTINS: &[CommandInfo] = &[
     builtins::command_cmd::COMMAND_INFO_COMMAND,
     builtins::ulimit::COMMAND_INFO_ULIMIT,
     builtins::umask::COMMAND_INFO_UMASK,
+    builtins::fs::mkdir::COMMAND_INFO,
+    builtins::fs::rm::COMMAND_INFO,
+    builtins::fs::touch::COMMAND_INFO,
+    builtins::fs::cp::COMMAND_INFO,
+    builtins::fs::mv::COMMAND_INFO,
+    builtins::fs::cat::COMMAND_INFO,
+    builtins::fs::ls::COMMAND_INFO,
+    builtins::fs::pager::COMMAND_INFO_LESS,
+    builtins::fs::pager::COMMAND_INFO_MORE,
+    builtins::fs::stat::COMMAND_INFO,
+    builtins::fs::du::COMMAND_INFO,
+    builtins::fs::df::COMMAND_INFO,
 ];
 
 pub fn find_command(name: &str) -> Option<&'static CommandInfo> {

@@ -5,7 +5,7 @@ use crate::builtins::registry::CommandInfo;
 pub const COMMAND_INFO_CD: CommandInfo = CommandInfo {
     name: "dir.cd",
     description: "Change the shell working directory.",
-    usage: "dir.cd [dir]\n\nChange the current directory to DIR. The default DIR is the value of the HOME shell variable.",
+    usage: "dir.cd <dir>\n\nChange the current directory to DIR.",
     run: cd_runner,
 };
 
@@ -35,7 +35,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
     let current = env::current_dir().map_err(|e| e.to_string())?;
 
     let target = if args.is_empty() {
-        dirs::home_dir().ok_or("Could not find home directory".to_string())?
+        return Err("too few arguments".to_string());
     } else if args[0] == "-" {
         state.previous_dir.clone().ok_or("OLDPWD not set".to_string())?
     } else {
