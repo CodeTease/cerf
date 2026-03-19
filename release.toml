@@ -56,7 +56,7 @@ image_name = "cerf"
 github_org = "cerfsh"
 templates = ["alpine", "debian-slim"]
 registries = ["ghcr", "cloudsmith"]
-cloudsmith_docker_username = "cerfsh"
+cloudsmith_docker_username = "ngo-long"
 
 [targets]
 "aarch64-apple-darwin" = true
