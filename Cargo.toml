@@ -1,19 +1,13 @@
 [package]
 name = "cerf"
 authors = ["CerfSh"]
-version = "0.1.1"
+version = "0.2.0"
 description = "A shell."
 edition = "2024"
 repository = "https://github.com/cerfsh/cerf"
 homepage = "https://github.com/cerfsh/cerf"
 license = "Apache-2.0"
-keywords = [
-    "cerf",
-    "shell",
-    "codetease",
-    "terminal",
-    "command-line",
-]
+keywords = ["cerf", "shell", "codetease", "terminal", "command-line"]
 categories = ["command-line-utilities"]
 rust-version = "1.93.1"
 include = ["src/**/*", "Cargo.toml", "LICENSE", "README.md"]
@@ -23,7 +17,7 @@ dirs = "6.0.0"
 glob = "0.3"
 nom = "8.0.0"
 rustyline = "17.0.2"
-sysinfo = "0.33.1"
+sysinfo = "0.38"
 jwalk = "0.8.1"
 chrono = "0.4.39"
 
