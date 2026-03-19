@@ -87,7 +87,11 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                             let a_is_dir = a.0.is_dir();
                             let b_is_dir = b.0.is_dir();
                             if a_is_dir != b_is_dir {
-                                return if a_is_dir { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+                                return if a_is_dir {
+                                    std::cmp::Ordering::Less
+                                } else {
+                                    std::cmp::Ordering::Greater
+                                };
                             }
                         }
 
@@ -119,11 +123,12 @@ pub fn runner_inner<W: std::io::Write, E: std::io::Write>(
                         let mut subdirs = Vec::new();
                         for (p, n) in &dir_entries {
                             if p.is_dir() && n != "." && n != ".." {
-                                let child_target = if target.ends_with('/') || target.ends_with('\\') {
-                                    format!("{}{}", target, n)
-                                } else {
-                                    format!("{}/{}", target, n)
-                                };
+                                let child_target =
+                                    if target.ends_with('/') || target.ends_with('\\') {
+                                        format!("{}{}", target, n)
+                                    } else {
+                                        format!("{}/{}", target, n)
+                                    };
                                 subdirs.push((p.clone(), child_target));
                             }
                         }

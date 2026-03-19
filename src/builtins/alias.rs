@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::collections::HashMap;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "alias.set",
@@ -40,7 +40,10 @@ pub fn run(args: &[String], aliases: &mut HashMap<String, String>) {
             if name.is_empty() {
                 eprintln!("cerf: alias.set: '{}': invalid alias name", arg);
             } else if crate::builtins::registry::find_command(&name).is_some() {
-                eprintln!("cerf: alias.set: '{}': cannot override builtin command", name);
+                eprintln!(
+                    "cerf: alias.set: '{}': cannot override builtin command",
+                    name
+                );
             } else {
                 aliases.insert(name, value);
             }

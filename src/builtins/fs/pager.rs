@@ -1,8 +1,8 @@
-use std::fs;
-use std::io::{self, BufRead, Write};
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::fs;
+use std::io::{self, BufRead, Write};
 
 pub const COMMAND_INFO_LESS: CommandInfo = CommandInfo {
     name: "fs.less",

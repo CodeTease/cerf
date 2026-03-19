@@ -1,7 +1,7 @@
-use std::fs;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::fs;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.mv",
@@ -20,7 +20,10 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
     let dst = expand_home(&args[1]);
 
     if let Err(e) = fs::rename(&src, &dst) {
-        eprintln!("cerf: fs.mv: cannot move '{}' to '{}': {}", args[0], args[1], e);
+        eprintln!(
+            "cerf: fs.mv: cannot move '{}' to '{}': {}",
+            args[0], args[1], e
+        );
         return (ExecutionResult::KeepRunning, 1);
     }
 

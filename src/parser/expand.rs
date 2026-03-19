@@ -1,4 +1,3 @@
-
 /// Expand variable references in `input` before parsing.
 ///
 /// Substitution rules (mirrors POSIX sh behaviour):
@@ -7,7 +6,10 @@
 ///                 (identifier chars: ASCII alphanumeric + `_`)
 /// - `${VAR}`    → same, with brace delimiters
 /// - Bare `$` with no following identifier or `{` → kept as-is
-pub fn expand_vars(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> String {
+pub fn expand_vars(
+    input: &str,
+    shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>,
+) -> String {
     let mut result = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
 
@@ -26,23 +28,24 @@ pub fn expand_vars(input: &str, shell_vars: &std::collections::HashMap<String, c
             // ${VAR} style
             Some('{') => {
                 chars.next(); // consume '{'
-                let var_name: String = chars
-                    .by_ref()
-                    .take_while(|&c| c != '}')
-                    .collect();
-                let value = shell_vars.get(&var_name).map(|v| v.value.as_string()).unwrap_or_default();
+                let var_name: String = chars.by_ref().take_while(|&c| c != '}').collect();
+                let value = shell_vars
+                    .get(&var_name)
+                    .map(|v| v.value.as_string())
+                    .unwrap_or_default();
                 result.push_str(&value);
             }
             // $VAR style — identifier starts with alpha or '_'
             Some(&c) if c.is_ascii_alphabetic() || c == '_' => {
                 let var_name: String = std::iter::once(chars.next().unwrap())
-                    .chain(
-                        std::iter::from_fn(|| {
-                            chars.next_if(|c| c.is_ascii_alphanumeric() || *c == '_')
-                        })
-                    )
+                    .chain(std::iter::from_fn(|| {
+                        chars.next_if(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    }))
                     .collect();
-                let value = shell_vars.get(&var_name).map(|v| v.value.as_string()).unwrap_or_default();
+                let value = shell_vars
+                    .get(&var_name)
+                    .map(|v| v.value.as_string())
+                    .unwrap_or_default();
                 result.push_str(&value);
             }
             // Bare $ with no following identifier → keep as-is
@@ -64,7 +67,10 @@ mod tests {
     #[test]
     fn test_expand_known_var() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_TEST_VAR".to_string(), crate::engine::state::Variable::new_string("hello".to_string()));
+        vars.insert(
+            "CERF_TEST_VAR".to_string(),
+            crate::engine::state::Variable::new_string("hello".to_string()),
+        );
         assert_eq!(expand_vars("$CERF_TEST_VAR", &vars), "hello");
         assert_eq!(expand_vars("${CERF_TEST_VAR}", &vars), "hello");
     }
@@ -94,15 +100,24 @@ mod tests {
     #[test]
     fn test_expand_inline() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_GREET".to_string(), crate::engine::state::Variable::new_string("world".to_string()));
+        vars.insert(
+            "CERF_GREET".to_string(),
+            crate::engine::state::Variable::new_string("world".to_string()),
+        );
         assert_eq!(expand_vars("hello $CERF_GREET!", &vars), "hello world!");
     }
 
     #[test]
     fn test_expand_multiple_vars() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_A".to_string(), crate::engine::state::Variable::new_string("foo".to_string()));
-        vars.insert("CERF_B".to_string(), crate::engine::state::Variable::new_string("bar".to_string()));
+        vars.insert(
+            "CERF_A".to_string(),
+            crate::engine::state::Variable::new_string("foo".to_string()),
+        );
+        vars.insert(
+            "CERF_B".to_string(),
+            crate::engine::state::Variable::new_string("bar".to_string()),
+        );
         assert_eq!(expand_vars("$CERF_A/$CERF_B", &vars), "foo/bar");
     }
 

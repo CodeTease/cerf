@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf, Component};
+use std::path::{Component, Path, PathBuf};
 
 /// Normalize a path logically (resolving . and ..) without hitting the disk.
 /// This also ensures the use of native path separators.
@@ -6,7 +6,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
-            Component::CurDir => {},
+            Component::CurDir => {}
             Component::ParentDir => {
                 match normalized.components().next_back() {
                     Some(Component::Normal(_)) => {
@@ -85,7 +85,8 @@ fn check_path(p: PathBuf) -> Option<PathBuf> {
 
     #[cfg(windows)]
     {
-        let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+        let pathext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
         let pathext_list: Vec<_> = pathext
             .split(';')
             .filter(|s| !s.is_empty())

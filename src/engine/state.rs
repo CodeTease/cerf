@@ -69,7 +69,7 @@ impl Variable {
             exported: false,
         }
     }
-    
+
     pub fn new_array(val: Vec<String>) -> Self {
         Self {
             value: VarValue::Array(val),
@@ -82,22 +82,34 @@ impl Variable {
 
 impl Job {
     pub fn is_stopped(&self) -> bool {
-        let all_suspended = self.processes.iter().all(|p| matches!(p.state, JobState::Stopped | JobState::Done(_)));
-        let any_stopped = self.processes.iter().any(|p| matches!(p.state, JobState::Stopped));
+        let all_suspended = self
+            .processes
+            .iter()
+            .all(|p| matches!(p.state, JobState::Stopped | JobState::Done(_)));
+        let any_stopped = self
+            .processes
+            .iter()
+            .any(|p| matches!(p.state, JobState::Stopped));
         all_suspended && any_stopped
     }
-    
+
     pub fn is_done(&self) -> bool {
-        self.processes.iter().all(|p| matches!(p.state, JobState::Done(_)))
+        self.processes
+            .iter()
+            .all(|p| matches!(p.state, JobState::Done(_)))
     }
 
     pub fn state(&self) -> JobState {
         if self.is_done() {
             // Find last process exit code
-            let code = self.processes.last().map(|p| match p.state {
-                JobState::Done(c) => c,
-                _ => 0,
-            }).unwrap_or(0);
+            let code = self
+                .processes
+                .last()
+                .map(|p| match p.state {
+                    JobState::Done(c) => c,
+                    _ => 0,
+                })
+                .unwrap_or(0);
             JobState::Done(code)
         } else if self.is_stopped() {
             JobState::Stopped
@@ -124,7 +136,7 @@ pub struct ShellState {
     pub set_options: HashSet<String>,
     /// Command history (persisted to `~/.cerf_history`).
     pub history: Vec<String>,
-    
+
     // Job control
     pub jobs: HashMap<usize, Job>,
     pub next_job_id: usize,
@@ -189,33 +201,33 @@ impl ShellState {
             self.variables.insert(name.to_string(), value);
         } else {
             let last_idx = self.scopes.len() - 1;
-            // Only insert into global if it was already global and not local, 
-            // but typical bash behavior is to create local if requested by `local`, 
+            // Only insert into global if it was already global and not local,
+            // but typical bash behavior is to create local if requested by `local`,
             // otherwise assignment modifies existing or creates global.
-            // For now, simple approach: set in current scope. 
-            // If we are setting a variable and it's not local, usually 
+            // For now, simple approach: set in current scope.
+            // If we are setting a variable and it's not local, usually
             // we'd walk up scopes. But standard simple approach:
-            
+
             // Check if it exists in local scope already
             if self.scopes[last_idx].contains_key(name) {
                 self.scopes[last_idx].insert(name.to_string(), value);
             } else {
-                 // Bash normally sets variables globally if they aren't declared local.
-                 // We will need a more complex `set_var` to replicate that strictly,
-                 // but for now, let's just insert globally unless we're using `local`.
-                 // Actually, standard behavior: modify where found, else create global.
-                 let mut found_scope = None;
-                 for (i, scope) in self.scopes.iter().enumerate().rev() {
-                     if scope.contains_key(name) {
-                         found_scope = Some(i);
-                         break;
-                     }
-                 }
-                 if let Some(i) = found_scope {
-                     self.scopes[i].insert(name.to_string(), value);
-                 } else {
-                     self.variables.insert(name.to_string(), value);
-                 }
+                // Bash normally sets variables globally if they aren't declared local.
+                // We will need a more complex `set_var` to replicate that strictly,
+                // but for now, let's just insert globally unless we're using `local`.
+                // Actually, standard behavior: modify where found, else create global.
+                let mut found_scope = None;
+                for (i, scope) in self.scopes.iter().enumerate().rev() {
+                    if scope.contains_key(name) {
+                        found_scope = Some(i);
+                        break;
+                    }
+                }
+                if let Some(i) = found_scope {
+                    self.scopes[i].insert(name.to_string(), value);
+                } else {
+                    self.variables.insert(name.to_string(), value);
+                }
             }
         }
     }
@@ -348,9 +360,15 @@ fn init_env_vars() -> HashMap<String, String> {
     // 2. Ensure PATH is set
     if !vars.contains_key("PATH") {
         #[cfg(windows)]
-        vars.insert("PATH".to_string(), "C:\\Windows\\system32;C:\\Windows".to_string());
+        vars.insert(
+            "PATH".to_string(),
+            "C:\\Windows\\system32;C:\\Windows".to_string(),
+        );
         #[cfg(not(windows))]
-        vars.insert("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin".to_string());
+        vars.insert(
+            "PATH".to_string(),
+            "/usr/local/bin:/usr/bin:/bin".to_string(),
+        );
     }
 
     // 3. Ensure EDITOR is set
@@ -381,7 +399,10 @@ fn init_env_vars() -> HashMap<String, String> {
             if let Ok(appdata) = std::env::var("LOCALAPPDATA") {
                 vars.insert("XDG_CONFIG_HOME".to_string(), appdata);
             } else if let Some(home) = vars.get("HOME") {
-                vars.insert("XDG_CONFIG_HOME".to_string(), format!("{}\\AppData\\Local", home));
+                vars.insert(
+                    "XDG_CONFIG_HOME".to_string(),
+                    format!("{}\\AppData\\Local", home),
+                );
             }
         }
         #[cfg(not(windows))]
@@ -467,7 +488,9 @@ fn init_env_vars() -> HashMap<String, String> {
     // Sync environment variables that we just added defaults for
     for (key, val) in &vars {
         if std::env::var(key).is_err() {
-            unsafe { std::env::set_var(key, val); }
+            unsafe {
+                std::env::set_var(key, val);
+            }
         }
     }
 

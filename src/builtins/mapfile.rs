@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState, Variable};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState, Variable};
 use std::io::{self, BufRead};
 
 pub const COMMAND_INFO_MAPFILE: CommandInfo = CommandInfo {
@@ -12,7 +12,7 @@ pub const COMMAND_INFO_MAPFILE: CommandInfo = CommandInfo {
 pub fn mapfile_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult, i32) {
     let mut remove_newline = false;
     let mut array_name = "MAPFILE".to_string();
-    
+
     let mut i = 0;
     while i < args.len() {
         if args[i] == "-t" {
@@ -26,11 +26,11 @@ pub fn mapfile_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
             break;
         }
     }
-    
+
     let mut lines = Vec::new();
     let stdin = io::stdin();
     let mut handle = stdin.lock();
-    
+
     loop {
         let mut line = String::new();
         match handle.read_line(&mut line) {
@@ -49,8 +49,8 @@ pub fn mapfile_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
             }
         }
     }
-    
+
     state.set_var(&array_name, Variable::new_array(lines));
-    
+
     (ExecutionResult::KeepRunning, 0)
 }

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::collections::HashMap;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "alias.unset",

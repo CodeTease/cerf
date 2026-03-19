@@ -1,6 +1,6 @@
-use std::io::{self, BufRead, Write};
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::io::{self, BufRead, Write};
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "io.read",
@@ -129,9 +129,14 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
             }
         };
 
-        state.set_var(var_name, crate::engine::state::Variable::new_string(val.to_string()));
+        state.set_var(
+            var_name,
+            crate::engine::state::Variable::new_string(val.to_string()),
+        );
         if std::env::var(var_name).is_ok() {
-            unsafe { std::env::set_var(var_name, val.to_string()); }
+            unsafe {
+                std::env::set_var(var_name, val.to_string());
+            }
         }
     }
 

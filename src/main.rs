@@ -1,21 +1,21 @@
-mod parser;
-mod engine;
 mod builtins;
+mod engine;
+mod parser;
 mod signals;
 
-use rustyline::error::ReadlineError;
+use engine::ShellState;
 use rustyline::DefaultEditor;
 use rustyline::ExternalPrinter;
+use rustyline::error::ReadlineError;
 use std::env;
 use std::sync::atomic::AtomicUsize;
-use engine::ShellState;
 
 pub static FG_JOB: AtomicUsize = AtomicUsize::new(0);
 
 fn get_prompt() -> String {
     let cwd = env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let home = dirs::home_dir();
-    
+
     let path_str = if let Some(home) = home {
         if cwd.starts_with(&home) {
             let relative = cwd.strip_prefix(&home).unwrap();
@@ -31,21 +31,24 @@ fn get_prompt() -> String {
     } else {
         cwd.display().to_string()
     };
-    
+
     format!("cf {} > ", path_str)
 }
 
 fn main() -> rustyline::Result<()> {
     signals::init();
-    
-    // Initialize job control 
+
+    // Initialize job control
     #[cfg(unix)]
     {
         let pid = nix::unistd::getpid();
         let _ = nix::unistd::setpgid(pid, pid);
-        let _ = nix::unistd::tcsetpgrp(unsafe { std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDIN_FILENO) }, pid);
+        let _ = nix::unistd::tcsetpgrp(
+            unsafe { std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDIN_FILENO) },
+            pid,
+        );
     }
-    
+
     let mut state = ShellState::new();
 
     #[cfg(unix)]
@@ -65,9 +68,7 @@ fn main() -> rustyline::Result<()> {
     // Source the user profile (~/.cerfrc) for interactive sessions.
     source_profile(&mut state);
 
-    let config = rustyline::Config::builder()
-        .bracketed_paste(true)
-        .build();
+    let config = rustyline::Config::builder().bracketed_paste(true).build();
     let mut rl = DefaultEditor::with_config(config)?;
     let mut printer_opt = rl.create_external_printer().ok();
 
@@ -76,16 +77,16 @@ fn main() -> rustyline::Result<()> {
         let (tx, rx) = std::sync::mpsc::channel::<engine::job_control::IocpMessage>();
         state.iocp_receiver = Some(rx);
         let handle = state.iocp_handle;
-        
+
         std::thread::spawn(move || {
             use windows_sys::Win32::System::IO::GetQueuedCompletionStatus;
             use windows_sys::Win32::System::SystemServices::JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO;
-            
+
             loop {
                 let mut num_bytes = 0;
                 let mut comp_key = 0;
                 let mut overlapped = std::ptr::null_mut();
-                
+
                 let res = unsafe {
                     GetQueuedCompletionStatus(
                         handle as _,
@@ -95,14 +96,14 @@ fn main() -> rustyline::Result<()> {
                         windows_sys::Win32::System::Threading::INFINITE,
                     )
                 };
-                
+
                 if res != 0 {
                     let msg = num_bytes;
                     let event_job_id = comp_key as usize;
                     let pid = overlapped as usize as u32;
 
                     let is_active_zero = msg == JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO;
-                    
+
                     if is_active_zero {
                         let fg = FG_JOB.load(std::sync::atomic::Ordering::Relaxed);
                         if fg != event_job_id {
@@ -130,7 +131,7 @@ fn main() -> rustyline::Result<()> {
         // Poll for any background jobs that have finished
         #[cfg(unix)]
         engine::job_control::update_jobs(&mut state);
-        
+
         // Ensure shell owns the terminal
         #[cfg(unix)]
         engine::job_control::restore_terminal(&state);
@@ -138,7 +139,9 @@ fn main() -> rustyline::Result<()> {
         let prompt = if input_buffer.is_empty() {
             get_prompt()
         } else {
-            state.get_var_string("PS2").unwrap_or_else(|| "> ".to_string())
+            state
+                .get_var_string("PS2")
+                .unwrap_or_else(|| "> ".to_string())
         };
 
         let readline = rl.readline(&prompt);
@@ -179,14 +182,14 @@ fn main() -> rustyline::Result<()> {
                 if let Some(entries) = parser::parse_pipeline(&input, &state.variables) {
                     match engine::execute_list(entries, &mut state) {
                         (engine::ExecutionResult::Exit, _) => break,
-                        _ => {},
+                        _ => {}
                     }
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 input_buffer.clear();
                 continue;
-            },
+            }
             Err(ReadlineError::Eof) => {
                 if !input_buffer.is_empty() {
                     let input = input_buffer.trim().to_string();
@@ -197,7 +200,7 @@ fn main() -> rustyline::Result<()> {
                 }
                 println!("exit");
                 break;
-            },
+            }
             Err(err) => {
                 eprintln!("Error: {:?}", err);
                 break;

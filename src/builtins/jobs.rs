@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "job.list",

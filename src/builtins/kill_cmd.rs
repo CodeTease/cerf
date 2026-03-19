@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "job.kill",
@@ -18,37 +18,37 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         eprintln!("cerf: kill: usage: kill [-s sigspec] pid | jobspec ...");
         return 1;
     }
-    
+
     let mut targets = Vec::new();
     #[cfg(unix)]
     let mut sig = nix::sys::signal::Signal::SIGTERM;
     #[cfg(windows)]
     let mut sig = 15; // SIGTERM
-    
+
     let mut i = 0;
     while i < args.len() {
         if args[i] == "-s" && i + 1 < args.len() {
             #[cfg(unix)]
             {
-                if args[i+1] == "KILL" || args[i+1] == "9" {
+                if args[i + 1] == "KILL" || args[i + 1] == "9" {
                     sig = nix::sys::signal::Signal::SIGKILL;
-                } else if args[i+1] == "STOP" {
+                } else if args[i + 1] == "STOP" {
                     sig = nix::sys::signal::Signal::SIGSTOP;
-                } else if args[i+1] == "CONT" {
+                } else if args[i + 1] == "CONT" {
                     sig = nix::sys::signal::Signal::SIGCONT;
-                } else if args[i+1] == "INT" {
+                } else if args[i + 1] == "INT" {
                     sig = nix::sys::signal::Signal::SIGINT;
                 }
             }
             #[cfg(windows)]
             {
-                if args[i+1] == "KILL" || args[i+1] == "9" {
+                if args[i + 1] == "KILL" || args[i + 1] == "9" {
                     sig = 9;
-                } else if args[i+1] == "STOP" {
+                } else if args[i + 1] == "STOP" {
                     sig = 19; // SIGSTOP
-                } else if args[i+1] == "CONT" {
+                } else if args[i + 1] == "CONT" {
                     sig = 18; // SIGCONT
-                } else if args[i+1] == "INT" {
+                } else if args[i + 1] == "INT" {
                     sig = 2; // SIGINT
                 }
             }
@@ -58,47 +58,60 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             #[cfg(unix)]
             {
                 let s = &args[i][1..];
-                if s == "9" { sig = nix::sys::signal::Signal::SIGKILL; }
-                else if s == "KILL" { sig = nix::sys::signal::Signal::SIGKILL; }
+                if s == "9" {
+                    sig = nix::sys::signal::Signal::SIGKILL;
+                } else if s == "KILL" {
+                    sig = nix::sys::signal::Signal::SIGKILL;
+                }
             }
             #[cfg(windows)]
             {
                 let s = &args[i][1..];
-                if s == "9" { sig = 9; }
-                else if s == "KILL" { sig = 9; }
+                if s == "9" {
+                    sig = 9;
+                } else if s == "KILL" {
+                    sig = 9;
+                }
             }
             i += 1;
             continue;
         }
-        
+
         targets.push(&args[i]);
         i += 1;
     }
-    
+
     let mut code = 0;
     #[cfg(unix)]
     {
         for target in targets {
             let mut pids_to_kill = Vec::new();
-            
+
             if target.starts_with('%') {
                 if let Ok(id) = crate::engine::job_control::resolve_job_specifier(target, state) {
                     if let Some(job) = state.jobs.get(&id) {
                         pids_to_kill.push(-(job.pgid as i32));
                     }
                 } else {
-                    eprintln!("cerf: kill: {}", crate::engine::job_control::resolve_job_specifier(target, state).unwrap_err());
+                    eprintln!(
+                        "cerf: kill: {}",
+                        crate::engine::job_control::resolve_job_specifier(target, state)
+                            .unwrap_err()
+                    );
                     code = 1;
                     continue;
                 }
             } else if let Ok(pid) = target.parse::<i32>() {
                 pids_to_kill.push(pid);
             } else {
-                eprintln!("cerf: kill: {}: arguments must be process or job IDs", target);
+                eprintln!(
+                    "cerf: kill: {}: arguments must be process or job IDs",
+                    target
+                );
                 code = 1;
                 continue;
             }
-            
+
             for pid in pids_to_kill {
                 if let Err(e) = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), sig) {
                     eprintln!("cerf: kill: ({}) - {}", pid, e);
@@ -107,13 +120,13 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             }
         }
     }
-    
+
     #[cfg(windows)]
     {
         for target in targets {
             let mut job_handle_to_kill = None;
             let mut pids_to_kill = Vec::new();
-            
+
             if target.starts_with('%') {
                 if let Ok(id) = crate::engine::job_control::resolve_job_specifier(target, state) {
                     if let Some(job) = state.jobs.get(&id) {
@@ -121,18 +134,25 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                         pids_to_kill.extend(job.processes.iter().map(|p| p.pid));
                     }
                 } else {
-                    eprintln!("cerf: kill: {}", crate::engine::job_control::resolve_job_specifier(target, state).unwrap_err());
+                    eprintln!(
+                        "cerf: kill: {}",
+                        crate::engine::job_control::resolve_job_specifier(target, state)
+                            .unwrap_err()
+                    );
                     code = 1;
                     continue;
                 }
             } else if let Ok(pid) = target.parse::<u32>() {
                 pids_to_kill.push(pid);
             } else {
-                eprintln!("cerf: kill: {}: arguments must be process or job IDs", target);
+                eprintln!(
+                    "cerf: kill: {}: arguments must be process or job IDs",
+                    target
+                );
                 code = 1;
                 continue;
             }
-            
+
             if sig == 9 || sig == 15 || sig == 2 {
                 if let Some(jh) = job_handle_to_kill {
                     unsafe {
@@ -144,7 +164,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                             let handle = windows_sys::Win32::System::Threading::OpenProcess(
                                 windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
                                 0,
-                                pid
+                                pid,
                             );
                             if !handle.is_null() {
                                 windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
@@ -163,24 +183,26 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             }
         }
     }
-    
+
     code
 }
 
 #[cfg(windows)]
 pub fn suspend_or_resume_process_win(pid: u32, suspend: bool) {
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD
-    };
-    use windows_sys::Win32::System::Threading::{OpenThread, SuspendThread, ResumeThread, THREAD_SUSPEND_RESUME};
     use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenThread, ResumeThread, SuspendThread, THREAD_SUSPEND_RESUME,
+    };
 
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
         if snapshot != windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
             let mut te32: THREADENTRY32 = std::mem::zeroed();
             te32.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
-            
+
             if Thread32First(snapshot, &mut te32) != 0 {
                 loop {
                     if te32.th32OwnerProcessID == pid {
@@ -206,35 +228,41 @@ pub fn suspend_or_resume_process_win(pid: u32, suspend: bool) {
 
 #[cfg(windows)]
 pub fn get_job_pids(job_handle: isize) -> Vec<u32> {
-    use windows_sys::Win32::System::JobObjects::{QueryInformationJobObject, JobObjectBasicProcessIdList, JOBOBJECT_BASIC_PROCESS_ID_LIST};
-    
+    use windows_sys::Win32::System::JobObjects::{
+        JOBOBJECT_BASIC_PROCESS_ID_LIST, JobObjectBasicProcessIdList, QueryInformationJobObject,
+    };
+
     let mut pids = Vec::new();
     unsafe {
         // Initial buffer size, say 32 processes
-        let mut buffer_size = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() + std::mem::size_of::<usize>() * 32;
+        let mut buffer_size = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>()
+            + std::mem::size_of::<usize>() * 32;
         let mut buffer: Vec<u8> = vec![0; buffer_size];
-        
+
         let mut return_length = 0;
         let mut success = QueryInformationJobObject(
             job_handle as _,
             JobObjectBasicProcessIdList,
             buffer.as_mut_ptr() as *mut _,
             buffer_size as u32,
-            &mut return_length
+            &mut return_length,
         );
-        
+
         let mut list_ptr = buffer.as_ptr() as *const JOBOBJECT_BASIC_PROCESS_ID_LIST;
-        
+
         // If buffer was too small, reallocate and try again
-        if success == 0 && (*list_ptr).NumberOfAssignedProcesses > (*list_ptr).NumberOfProcessIdsInList {
-            buffer_size = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>() + std::mem::size_of::<usize>() * (*list_ptr).NumberOfAssignedProcesses as usize;
+        if success == 0
+            && (*list_ptr).NumberOfAssignedProcesses > (*list_ptr).NumberOfProcessIdsInList
+        {
+            buffer_size = std::mem::size_of::<JOBOBJECT_BASIC_PROCESS_ID_LIST>()
+                + std::mem::size_of::<usize>() * (*list_ptr).NumberOfAssignedProcesses as usize;
             buffer = vec![0; buffer_size];
             success = QueryInformationJobObject(
                 job_handle as _,
                 JobObjectBasicProcessIdList,
                 buffer.as_mut_ptr() as *mut _,
                 buffer_size as u32,
-                &mut return_length
+                &mut return_length,
             );
             list_ptr = buffer.as_ptr() as *const JOBOBJECT_BASIC_PROCESS_ID_LIST;
         }

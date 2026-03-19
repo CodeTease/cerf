@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::collections::HashMap;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "env.unset",
@@ -27,6 +27,8 @@ pub fn run(args: &[String], variables: &mut HashMap<String, crate::engine::state
         // Bash allows 'unset' to fail silently if the variable doesn't exist.
         // It also removes it from the environment.
         variables.remove(arg);
-        unsafe { std::env::remove_var(arg); }
+        unsafe {
+            std::env::remove_var(arg);
+        }
     }
 }

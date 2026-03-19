@@ -1,14 +1,15 @@
 use nom::{
+    IResult, Parser,
     branch::alt,
     bytes::complete::is_not,
-    character::complete::{char, multispace0, multispace1, space0, space1, line_ending},
-    sequence::{delimited, preceded},
-    IResult,
-    Parser,
+    character::complete::{char, line_ending, multispace0, multispace1, space0, space1},
     multi::many1,
+    sequence::{delimited, preceded},
 };
 
-use super::ast::{Arg, CommandEntry, CommandNode, Connector, Pipeline, Redirect, RedirectKind, SimpleCommand};
+use super::ast::{
+    Arg, CommandEntry, CommandNode, Connector, Pipeline, Redirect, RedirectKind, SimpleCommand,
+};
 
 // ── Low-level nom parsers ──────────────────────────────────────────────────
 
@@ -49,12 +50,8 @@ fn parse_unquoted(input: &str) -> IResult<&str, Segment> {
 /// **entire** word consists of a single quoted segment (e.g. `"hello"`).
 pub fn parse_arg(input: &str) -> IResult<&str, Arg> {
     // We need at least one segment.
-    let (mut rest, first) = alt((
-        parse_double_quoted,
-        parse_single_quoted,
-        parse_unquoted,
-    ))
-    .parse(input)?;
+    let (mut rest, first) =
+        alt((parse_double_quoted, parse_single_quoted, parse_unquoted)).parse(input)?;
 
     let mut value = first.0;
     let mut segment_count = 1u32;
@@ -93,7 +90,9 @@ pub fn parse_word(input: &str) -> IResult<&str, String> {
 fn parse_redirect(input: &str) -> IResult<&str, Redirect> {
     let (input, _) = multispace0(input)?;
     let (input, kind) = alt((
-        nom::combinator::map(nom::bytes::complete::tag(">>"), |_| RedirectKind::StdoutAppend),
+        nom::combinator::map(nom::bytes::complete::tag(">>"), |_| {
+            RedirectKind::StdoutAppend
+        }),
         nom::combinator::map(char('>'), |_| RedirectKind::StdoutOverwrite),
         nom::combinator::map(char('<'), |_| RedirectKind::StdinFrom),
     ))
@@ -109,7 +108,10 @@ fn parse_redirect(input: &str) -> IResult<&str, Redirect> {
 fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
     let (input, name) = is_not(" \t\r\n\"';& |=><")(input)?;
     if name.is_empty() {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
     }
     let (input, _) = char('=')(input)?;
     let (input, value) = match parse_word(input) {
@@ -121,7 +123,9 @@ fn parse_assignment(input: &str) -> IResult<&str, (String, String)> {
 
 // ── Single command (with redirects) ───────────────────────────────────────
 
-pub const RESERVED_WORDS: &[&str] = &["if", "elif", "else", "func", "for", "in", "while", "loop", "break", "continue", "{", "}", "!"];
+pub const RESERVED_WORDS: &[&str] = &[
+    "if", "elif", "else", "func", "for", "in", "while", "loop", "break", "continue", "{", "}", "!",
+];
 
 pub fn is_reserved_word(word: &str) -> bool {
     RESERVED_WORDS.contains(&word)
@@ -148,7 +152,10 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
         Ok((after, arg)) => {
             if !arg.quoted && is_reserved_word(&arg.value) {
                 // Return an error if a reserved word is used unquoted as a command name.
-                return Err(nom::Err::Error(nom::error::Error::new(rest, nom::error::ErrorKind::Tag)));
+                return Err(nom::Err::Error(nom::error::Error::new(
+                    rest,
+                    nom::error::ErrorKind::Tag,
+                )));
             }
             (after, Some(arg.value))
         }
@@ -195,7 +202,15 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
 
     let (rest, _) = space0(rest)?;
 
-    Ok((rest, SimpleCommand { assignments, name, args, redirects }))
+    Ok((
+        rest,
+        SimpleCommand {
+            assignments,
+            name,
+            args,
+            redirects,
+        },
+    ))
 }
 
 // ── Block, If, and Func parsing ──────────────────────────────────────────
@@ -203,13 +218,13 @@ pub fn parse_simple_command(input: &str) -> IResult<&str, SimpleCommand> {
 /// Parse a block of commands `{ ... }`, returning `Vec<CommandEntry>`.
 fn parse_block_body(input: &str) -> IResult<&str, Vec<CommandEntry>> {
     let (input, _) = delimited(multispace0, char('{'), multispace0).parse(input)?;
-    
+
     // If empty block
     if input.starts_with('}') {
         let (input, _) = char('}')(input)?;
         return Ok((input, Vec::new()));
     }
-    
+
     let (input, entries) = parse_command_list(input)?;
     let (input, _) = delimited(multispace0, char('}'), multispace0).parse(input)?;
     Ok((input, entries))
@@ -219,23 +234,27 @@ fn parse_block_body(input: &str) -> IResult<&str, Vec<CommandEntry>> {
 fn parse_if_command(input: &str) -> IResult<&str, CommandNode> {
     let (input, _) = nom::bytes::complete::tag("if")(input)?;
     let (input, _) = multispace1(input)?;
-    
+
     let (input, cond) = parse_command_list(input)?;
     let (input, body) = parse_block_body(input)?;
-    
+
     let mut branches = vec![(cond, body)];
     let mut rest = input;
     let mut else_branch = None;
-    
+
     loop {
         let (r, _) = multispace0(rest)?;
-        if let Ok((r2, _)) = nom::bytes::complete::tag::<_, _, nom::error::Error<&str>>("elif").parse(r) {
+        if let Ok((r2, _)) =
+            nom::bytes::complete::tag::<_, _, nom::error::Error<&str>>("elif").parse(r)
+        {
             let (r3, _) = multispace1(r2)?;
             let (r4, elif_cond) = parse_command_list(r3)?;
             let (r5, elif_body) = parse_block_body(r4)?;
             branches.push((elif_cond, elif_body));
             rest = r5;
-        } else if let Ok((r2, _)) = nom::bytes::complete::tag::<_, _, nom::error::Error<&str>>("else").parse(r) {
+        } else if let Ok((r2, _)) =
+            nom::bytes::complete::tag::<_, _, nom::error::Error<&str>>("else").parse(r)
+        {
             let (r3, _) = multispace0(r2)?;
             let (r4, e_body) = parse_block_body(r3)?;
             else_branch = Some(e_body);
@@ -245,14 +264,21 @@ fn parse_if_command(input: &str) -> IResult<&str, CommandNode> {
             break;
         }
     }
-    
+
     let mut redirects = Vec::new();
     while let Ok((new_rest, redir)) = parse_redirect(rest) {
         redirects.push(redir);
         rest = new_rest;
     }
-    
-    Ok((rest, CommandNode::If { branches, else_branch, redirects }))
+
+    Ok((
+        rest,
+        CommandNode::If {
+            branches,
+            else_branch,
+            redirects,
+        },
+    ))
 }
 
 /// Parse a `func` declaration.
@@ -262,7 +288,7 @@ fn parse_func_decl(input: &str) -> IResult<&str, CommandNode> {
     let (input, name_str) = is_not(" \t\r\n{")(input)?;
     let name = name_str.trim().to_string();
     let (input, body) = parse_block_body(input)?;
-    
+
     Ok((input, CommandNode::FuncDecl { name, body }))
 }
 
@@ -275,7 +301,7 @@ fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
     let (input, _) = multispace1(input)?;
     let (input, _) = nom::bytes::complete::tag("in")(input)?;
     let (mut rest, _) = multispace1(input)?;
-    
+
     let mut items = Vec::new();
     loop {
         if let Ok((r, _)) = multispace0::<_, nom::error::Error<&str>>(rest) {
@@ -284,7 +310,7 @@ fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
                 break;
             }
         }
-        
+
         match parse_arg(rest) {
             Ok((after_arg, arg)) => {
                 items.push(arg);
@@ -294,23 +320,31 @@ fn parse_for_command(input: &str) -> IResult<&str, CommandNode> {
             Err(_) => break, // Fallback if no arg can be parsed
         }
     }
-    
+
     let (mut rest, body) = parse_block_body(rest)?;
-    
+
     let mut redirects = Vec::new();
     while let Ok((new_rest, redir)) = parse_redirect(rest) {
         redirects.push(redir);
         rest = new_rest;
     }
-    
-    Ok((rest, CommandNode::For { var, items, body, redirects }))
+
+    Ok((
+        rest,
+        CommandNode::For {
+            var,
+            items,
+            body,
+            redirects,
+        },
+    ))
 }
 
 /// Parse a `while` loop command.
 fn parse_while_command(input: &str) -> IResult<&str, CommandNode> {
     let (input, _) = nom::bytes::complete::tag("while")(input)?;
     let (input, _) = multispace1(input)?;
-    
+
     let (input, cond) = parse_command_list(input)?;
     let (input, body) = parse_block_body(input)?;
     let mut rest = input;
@@ -319,8 +353,15 @@ fn parse_while_command(input: &str) -> IResult<&str, CommandNode> {
         redirects.push(redir);
         rest = new_rest;
     }
-    
-    Ok((rest, CommandNode::While { cond, body, redirects }))
+
+    Ok((
+        rest,
+        CommandNode::While {
+            cond,
+            body,
+            redirects,
+        },
+    ))
 }
 
 /// Parse a `loop` command.
@@ -334,7 +375,7 @@ fn parse_loop_command(input: &str) -> IResult<&str, CommandNode> {
         redirects.push(redir);
         rest = new_rest;
     }
-    
+
     Ok((rest, CommandNode::Loop { body, redirects }))
 }
 
@@ -361,7 +402,8 @@ pub fn parse_command_node(input: &str) -> IResult<&str, CommandNode> {
         parse_break_command,
         parse_continue_command,
         nom::combinator::map(parse_simple_command, CommandNode::Simple),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 // ── Pipeline expression (cmd | cmd | …) ──────────────────────────────────
@@ -369,7 +411,7 @@ pub fn parse_command_node(input: &str) -> IResult<&str, CommandNode> {
 /// Parse a pipeline: `[!] command (| command)*`.
 pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
     let (input, _) = multispace0(input)?;
-    
+
     // Check for logical NOT operator '!'
     let (rest, negated) = if input.starts_with('!') {
         // '!' must be its own token or followed by whitespace
@@ -403,7 +445,14 @@ pub fn parse_pipeline_expr(input: &str) -> IResult<&str, Pipeline> {
         }
     }
 
-    Ok((rest, Pipeline { commands, negated, background: false }))
+    Ok((
+        rest,
+        Pipeline {
+            commands,
+            negated,
+            background: false,
+        },
+    ))
 }
 
 // ── Connector parsing ─────────────────────────────────────────────────────
@@ -429,45 +478,54 @@ pub fn parse_connector(input: &str) -> IResult<&str, Connector> {
 pub fn parse_command_list(input: &str) -> IResult<&str, Vec<CommandEntry>> {
     let mut rest = input;
     let mut entries = Vec::new();
-    
+
     // Parse the first pipeline
     let (after_first, first_pipeline) = parse_pipeline_expr(rest)?;
     rest = after_first;
-    
+
     let mut current_pipeline = first_pipeline;
     let mut current_connector = None;
-    
+
     loop {
         let (r, _) = space0(rest)?;
         if r.is_empty() || r.starts_with('}') || r.starts_with('{') {
-            entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
+            entries.push(CommandEntry {
+                connector: current_connector,
+                pipeline: current_pipeline,
+            });
             rest = r;
             break;
         }
 
         // We also check for newlines here if they are not picked up by parse_connector
         // But parse_connector should handle them now.
-        
+
         let (after_conn, conn) = match parse_connector(r) {
             Ok(v) => v,
             Err(_) => {
-                entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
+                entries.push(CommandEntry {
+                    connector: current_connector,
+                    pipeline: current_pipeline,
+                });
                 rest = r;
                 break;
             }
         };
-        
+
         if conn == Connector::Amp {
             current_pipeline.background = true;
-            entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
+            entries.push(CommandEntry {
+                connector: current_connector,
+                pipeline: current_pipeline,
+            });
             rest = after_conn;
-            
+
             let (r2, _) = multispace0(rest)?;
             if r2.is_empty() || r2.starts_with('}') {
                 rest = r2;
                 break;
             }
-            
+
             match parse_pipeline_expr(r2) {
                 Ok((after_next, next_pipe)) => {
                     current_pipeline = next_pipe;
@@ -481,9 +539,12 @@ pub fn parse_command_list(input: &str) -> IResult<&str, Vec<CommandEntry>> {
                 }
             }
         }
-        
-        entries.push(CommandEntry { connector: current_connector, pipeline: current_pipeline });
-        
+
+        entries.push(CommandEntry {
+            connector: current_connector,
+            pipeline: current_pipeline,
+        });
+
         match parse_pipeline_expr(after_conn) {
             Ok((after_next, next_pipe)) => {
                 current_pipeline = next_pipe;
@@ -496,6 +557,6 @@ pub fn parse_command_list(input: &str) -> IResult<&str, Vec<CommandEntry>> {
             }
         }
     }
-    
+
     Ok((rest, entries))
 }

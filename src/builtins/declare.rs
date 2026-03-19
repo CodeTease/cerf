@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState, Variable, VarValue};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState, VarValue, Variable};
 
 pub const COMMAND_INFO_DECLARE: CommandInfo = CommandInfo {
     name: "env.declare",
@@ -15,7 +15,7 @@ pub fn declare_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
 
 pub fn run(args: &[String], state: &mut ShellState, local_scope: bool) -> i32 {
     let mut i = 0;
-    
+
     let mut make_array = false;
     let mut make_integer = false;
     let mut make_readonly = false;
@@ -40,7 +40,7 @@ pub fn run(args: &[String], state: &mut ShellState, local_scope: bool) -> i32 {
     }
 
     let targets = &args[i..];
-    
+
     if targets.is_empty() {
         // Just print
         return 0;
@@ -54,16 +54,24 @@ pub fn run(args: &[String], state: &mut ShellState, local_scope: bool) -> i32 {
             name = &target[..eq_pos];
             value_str = Some(&target[eq_pos + 1..]);
         }
-        
+
         // If not creating new, inherit old
         let old_var = state.get_var(name).cloned();
-        
+
         let mut var = old_var.unwrap_or_else(|| Variable::new_string(String::new()));
-        
-        if make_array { var.value = VarValue::Array(Vec::new()); }
-        if make_integer { var.integer = true; }
-        if make_readonly { var.readonly = true; }
-        if make_export { var.exported = true; }
+
+        if make_array {
+            var.value = VarValue::Array(Vec::new());
+        }
+        if make_integer {
+            var.integer = true;
+        }
+        if make_readonly {
+            var.readonly = true;
+        }
+        if make_export {
+            var.exported = true;
+        }
 
         if let Some(val) = value_str {
             if var.readonly {
@@ -74,8 +82,9 @@ pub fn run(args: &[String], state: &mut ShellState, local_scope: bool) -> i32 {
                 // very simple array parsing: (1 2 3)
                 let val_trim = val.trim();
                 if val_trim.starts_with('(') && val_trim.ends_with(')') {
-                    let inner = &val_trim[1..val_trim.len()-1];
-                    let arr_vals: Vec<String> = inner.split_whitespace().map(|s| s.to_string()).collect();
+                    let inner = &val_trim[1..val_trim.len() - 1];
+                    let arr_vals: Vec<String> =
+                        inner.split_whitespace().map(|s| s.to_string()).collect();
                     var.value = VarValue::Array(arr_vals);
                 } else {
                     var.value = VarValue::Array(vec![val.to_string()]);
@@ -84,11 +93,13 @@ pub fn run(args: &[String], state: &mut ShellState, local_scope: bool) -> i32 {
                 var.value = VarValue::String(val.to_string());
             }
         }
-        
+
         if var.exported {
-            unsafe { std::env::set_var(name, var.value.as_string()); }
+            unsafe {
+                std::env::set_var(name, var.value.as_string());
+            }
         }
-        
+
         if local_scope {
             state.set_local_var(name, var);
         } else {

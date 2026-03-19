@@ -1,18 +1,17 @@
-
-use std::process::{Command, Stdio};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
 
-use crate::parser::{CommandEntry, Connector, Pipeline, expand_vars, Arg};
 use crate::builtins;
+use crate::parser::{Arg, CommandEntry, Connector, Pipeline, expand_vars};
 #[cfg(unix)]
 use crate::signals;
 
-use super::state::{ShellState, ExecutionResult, Variable};
-use super::redirect::{open_stdout_redirect, open_stdin_redirect, resolve_redirects};
 use super::alias::expand_alias;
-use super::path::{expand_home, find_executable};
 use super::glob::expand_globs;
+use super::path::{expand_home, find_executable};
+use super::redirect::{open_stdin_redirect, open_stdout_redirect, resolve_redirects};
+use super::state::{ExecutionResult, ShellState, Variable};
 
 // ── Single command (no pipe) ──────────────────────────────────────────────
 
@@ -33,7 +32,9 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             state.set_var(key, Variable::new_string(expanded_val.clone()));
             // If already in env, update it there too
             if std::env::var(key).is_ok() {
-               unsafe { std::env::set_var(key, &expanded_val); }
+                unsafe {
+                    std::env::set_var(key, &expanded_val);
+                }
             }
         }
         // Handle residuals like redirects (e.g., VAR=val > file)
@@ -60,40 +61,50 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
     let name = expand_vars(raw_name, &state.variables);
 
     // Expand variables in the argument list BEFORE glob expansion.
-    let expanded_args: Vec<Arg> = cmd.args.iter().map(|a| {
-        Arg {
+    let expanded_args: Vec<Arg> = cmd
+        .args
+        .iter()
+        .map(|a| Arg {
             value: expand_vars(&a.value, &state.variables),
             quoted: a.quoted,
-        }
-    }).collect();
+        })
+        .collect();
 
     let args = expand_globs(&expanded_args);
 
     if let Some(cmd_info) = builtins::registry::find_command(name.as_str()) {
         // Some builtins (like history, dirs) need access to the stdout redirect directly
-        // rather than us handling it here, because they might format output differently or 
+        // rather than us handling it here, because they might format output differently or
         // need to manage the File themselves. For backward compatibility with the current
-        // signatures that don't take redirects, we'll temporarily handle redirects here for 
+        // signatures that don't take redirects, we'll temporarily handle redirects here for
         // the generic cases (echo, help, pwd, type) that previously had them inline.
-        
+
         if pipeline.background {
             // Builtin in background -> spawn a subshell process for it.
             // This is the simplest way to ensure it doesn't block the main shell.
-            let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cerf")));
-            command.arg("-c").arg(crate::engine::job_control::format_command(pipeline));
-            
+            let mut command = Command::new(
+                std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cerf")),
+            );
+            command
+                .arg("-c")
+                .arg(crate::engine::job_control::format_command(pipeline));
+
             // Redirects for subshell
             if let Some(redir) = stdin_redir {
                 let mut expanded_redir = redir.clone();
                 expanded_redir.file = expand_vars(&redir.file, &state.variables);
-                if let Ok(f) = open_stdin_redirect(&expanded_redir) { command.stdin(Stdio::from(f)); }
+                if let Ok(f) = open_stdin_redirect(&expanded_redir) {
+                    command.stdin(Stdio::from(f));
+                }
             } else {
                 command.stdin(Stdio::null());
             }
             if let Some(redir) = stdout_redir {
                 let mut expanded_redir = redir.clone();
                 expanded_redir.file = expand_vars(&redir.file, &state.variables);
-                if let Ok(f) = open_stdout_redirect(&expanded_redir) { command.stdout(Stdio::from(f)); }
+                if let Ok(f) = open_stdout_redirect(&expanded_redir) {
+                    command.stdout(Stdio::from(f));
+                }
             }
 
             match command.spawn() {
@@ -101,12 +112,23 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                     let pid = child.id();
                     let job_id = state.next_job_id;
                     println!("[{}] {}", job_id, pid);
-                    
+
                     #[cfg(windows)]
                     let job_handle = unsafe {
-                        let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(std::ptr::null(), std::ptr::null());
-                        windows_sys::Win32::System::IO::CreateIoCompletionPort(handle, state.iocp_handle as _, job_id as _, 0);
-                        windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(handle, std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _);
+                        let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(
+                            std::ptr::null(),
+                            std::ptr::null(),
+                        );
+                        windows_sys::Win32::System::IO::CreateIoCompletionPort(
+                            handle,
+                            state.iocp_handle as _,
+                            job_id as _,
+                            0,
+                        );
+                        windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(
+                            handle,
+                            std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _,
+                        );
                         handle as isize
                     };
 
@@ -134,36 +156,38 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             }
         }
 
-        let run_generic = |state: &mut ShellState| -> (ExecutionResult, i32) {
-            (cmd_info.run)(&args, state)
-        };
+        let run_generic =
+            |state: &mut ShellState| -> (ExecutionResult, i32) { (cmd_info.run)(&args, state) };
 
         match name.as_str() {
             "pushd" | "popd" | "dirs" | "history" => {
-                 // These commands need to be updated to take redirects if we want them to handle them natively,
-                 // but for now their specific runners don't take redirects in the `BuiltinRunner` signature.
-                 // We will just let them print to stdout/stderr. If we need redirects, we capture them.
-                 // Actually looking at their current COMMAND_INFO implementations, they just call the underlying runner.
-                 // So we can just use run_generic() for now, but we'll lose redirect capability for them until their signature is updated.
-                 // For now, let's just run them.
-                 run_generic(state)
+                // These commands need to be updated to take redirects if we want them to handle them natively,
+                // but for now their specific runners don't take redirects in the `BuiltinRunner` signature.
+                // We will just let them print to stdout/stderr. If we need redirects, we capture them.
+                // Actually looking at their current COMMAND_INFO implementations, they just call the underlying runner.
+                // So we can just use run_generic() for now, but we'll lose redirect capability for them until their signature is updated.
+                // For now, let's just run them.
+                run_generic(state)
             }
             "pwd" | "help" | "echo" | "type" => {
                 // These commands previously had their redirect handling inline in `execute_simple`.
                 if let Some(redir) = stdout_redir {
                     match open_stdout_redirect(redir) {
                         Ok(mut _f) => {
-                            // Temporarily redirect stdout. 
+                            // Temporarily redirect stdout.
                             // A better approach is to change `BuiltinRunner` to take redirects.
                             // But for now, we'll just run them and hope they don't break too badly.
-                            // Actually, let's just use `run_generic` and accept that redirects for these builtins 
+                            // Actually, let's just use `run_generic` and accept that redirects for these builtins
                             // might not work perfectly without a signature change.
-                            
+
                             // Let's implement a hacky wrapper for now:
                             // We can't easily gag stdout in pure Rust without OS-specific dup2 calls.
                             // Let's just run it. The `BuiltinRunner` signature needs to be updated in a future PR
                             // to support `stdin` and `stdout` arguments.
-                            eprintln!("cerf: warning: redirecting output of builtin '{}' is currently unsupported via registry", name);
+                            eprintln!(
+                                "cerf: warning: redirecting output of builtin '{}' is currently unsupported via registry",
+                                name
+                            );
                             run_generic(state)
                         }
                         Err(e) => {
@@ -178,7 +202,10 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             "read" => {
                 if let Some(_redir) = stdin_redir {
                     // Similar issue for stdin
-                    eprintln!("cerf: warning: redirecting input of builtin '{}' is currently unsupported via registry", name);
+                    eprintln!(
+                        "cerf: warning: redirecting input of builtin '{}' is currently unsupported via registry",
+                        name
+                    );
                 }
                 run_generic(state)
             }
@@ -189,7 +216,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
         }
     } else {
         let resolved = find_executable(&name).unwrap_or_else(|| expand_home(&name));
-        
+
         #[cfg(windows)]
         let mut command = {
             let is_batch = resolved.extension().map_or(false, |e| {
@@ -204,7 +231,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                 Command::new(&resolved)
             }
         };
-        
+
         #[cfg(unix)]
         let mut command = Command::new(&resolved);
 
@@ -216,7 +243,9 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             let mut expanded_redir = redir.clone();
             expanded_redir.file = expand_vars(&redir.file, &state.variables);
             match open_stdin_redirect(&expanded_redir) {
-                Ok(f) => { command.stdin(Stdio::from(f)); }
+                Ok(f) => {
+                    command.stdin(Stdio::from(f));
+                }
                 Err(e) => {
                     eprintln!("{}", e);
                     return (ExecutionResult::KeepRunning, 1);
@@ -231,7 +260,9 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
             let mut expanded_redir = redir.clone();
             expanded_redir.file = expand_vars(&redir.file, &state.variables);
             match open_stdout_redirect(&expanded_redir) {
-                Ok(f) => { command.stdout(Stdio::from(f)); }
+                Ok(f) => {
+                    command.stdout(Stdio::from(f));
+                }
                 Err(e) => {
                     eprintln!("{}", e);
                     return (ExecutionResult::KeepRunning, 1);
@@ -268,20 +299,20 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
         let code = match result {
             Ok(mut child) => {
                 let pid = child.id();
-                
+
                 #[cfg(unix)]
                 if state.shell_pgid.is_some() {
                     let _ = nix::unistd::setpgid(
-                        nix::unistd::Pid::from_raw(pid as i32), 
-                        nix::unistd::Pid::from_raw(pid as i32)
+                        nix::unistd::Pid::from_raw(pid as i32),
+                        nix::unistd::Pid::from_raw(pid as i32),
                     );
                 }
 
                 #[cfg(windows)]
                 let job_handle = unsafe {
                     let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(
-                        std::ptr::null(), 
-                        std::ptr::null()
+                        std::ptr::null(),
+                        std::ptr::null(),
                     );
                     let mut limit_info: windows_sys::Win32::System::JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
                     if !pipeline.background {
@@ -295,13 +326,13 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                     );
                     windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(
                         handle,
-                        std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _
+                        std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _,
                     );
                     windows_sys::Win32::System::IO::CreateIoCompletionPort(
                         handle,
                         state.iocp_handle as _,
                         state.next_job_id as _,
-                        0
+                        0,
                     );
                     handle as isize
                 };
@@ -322,7 +353,7 @@ fn execute_simple(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResu
                 let job_id = state.next_job_id;
                 state.jobs.insert(job_id, job);
                 state.next_job_id += 1;
-                
+
                 if pipeline.background {
                     println!("[{}] {}", job_id, pid);
                     0
@@ -377,19 +408,27 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         match &cmds[0] {
             crate::parser::CommandNode::Break => return (ExecutionResult::Break, 0),
             crate::parser::CommandNode::Continue => return (ExecutionResult::Continue, 0),
-            crate::parser::CommandNode::If { branches, else_branch, redirects } => {
+            crate::parser::CommandNode::If {
+                branches,
+                else_branch,
+                redirects,
+            } => {
                 if !redirects.is_empty() {
                     return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
                 }
-                
+
                 let mut final_code = 0;
                 let mut executed = false;
                 for (cond, body) in branches {
                     let (res, cond_code) = execute_list(cond.clone(), state);
-                    if !matches!(res, ExecutionResult::KeepRunning) { return (res, cond_code); }
+                    if !matches!(res, ExecutionResult::KeepRunning) {
+                        return (res, cond_code);
+                    }
                     if cond_code == 0 {
                         let (res, body_code) = execute_list(body.clone(), state);
-                        if !matches!(res, ExecutionResult::KeepRunning) { return (res, body_code); }
+                        if !matches!(res, ExecutionResult::KeepRunning) {
+                            return (res, body_code);
+                        }
                         final_code = body_code;
                         executed = true;
                         break;
@@ -398,30 +437,42 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 if !executed {
                     if let Some(body) = else_branch {
                         let (res, body_code) = execute_list(body.clone(), state);
-                        if !matches!(res, ExecutionResult::KeepRunning) { return (res, body_code); }
+                        if !matches!(res, ExecutionResult::KeepRunning) {
+                            return (res, body_code);
+                        }
                         final_code = body_code;
                     }
                 }
-                let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
+                let code = if pipeline.negated {
+                    if final_code == 0 { 1 } else { 0 }
+                } else {
+                    final_code
+                };
                 return (ExecutionResult::KeepRunning, code);
             }
             crate::parser::CommandNode::FuncDecl { name, body } => {
                 state.functions.insert(name.clone(), body.clone());
                 return (ExecutionResult::KeepRunning, 0);
             }
-            crate::parser::CommandNode::For { var, items, body, redirects } => {
+            crate::parser::CommandNode::For {
+                var,
+                items,
+                body,
+                redirects,
+            } => {
                 if !redirects.is_empty() {
                     return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
                 }
 
                 // Expand variables in loop items
-                let expanded_items_vars: Vec<Arg> = items.iter().map(|a| {
-                    Arg {
+                let expanded_items_vars: Vec<Arg> = items
+                    .iter()
+                    .map(|a| Arg {
                         value: expand_vars(&a.value, &state.variables),
                         quoted: a.quoted,
-                    }
-                }).collect();
-                
+                    })
+                    .collect();
+
                 let expanded_items = expand_globs(&expanded_items_vars);
                 let mut final_code = 0;
                 for item in expanded_items {
@@ -436,10 +487,18 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                         }
                     }
                 }
-                let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
+                let code = if pipeline.negated {
+                    if final_code == 0 { 1 } else { 0 }
+                } else {
+                    final_code
+                };
                 return (ExecutionResult::KeepRunning, code);
             }
-            crate::parser::CommandNode::While { cond, body, redirects } => {
+            crate::parser::CommandNode::While {
+                cond,
+                body,
+                redirects,
+            } => {
                 if !redirects.is_empty() {
                     return execute_block_with_redirects(&pipeline, &cmds[0], redirects, state);
                 }
@@ -447,7 +506,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 let mut final_code = 0;
                 loop {
                     let (res, cond_code) = execute_list(cond.clone(), state);
-                    if !matches!(res, ExecutionResult::KeepRunning) { return (res, cond_code); }
+                    if !matches!(res, ExecutionResult::KeepRunning) {
+                        return (res, cond_code);
+                    }
                     if cond_code != 0 {
                         break;
                     }
@@ -461,7 +522,11 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                         }
                     }
                 }
-                let code = if pipeline.negated { if final_code == 0 { 1 } else { 0 } } else { final_code };
+                let code = if pipeline.negated {
+                    if final_code == 0 { 1 } else { 0 }
+                } else {
+                    final_code
+                };
                 return (ExecutionResult::KeepRunning, code);
             }
             crate::parser::CommandNode::Loop { body, redirects } => {
@@ -487,7 +552,11 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 let name = expand_vars(cmd.name.as_deref().unwrap_or(""), &state.variables);
                 if let Some(func_body) = state.functions.get(&name).cloned() {
                     let (res, code) = execute_list(func_body, state);
-                    let final_code = if pipeline.negated { if code == 0 { 1 } else { 0 } } else { code };
+                    let final_code = if pipeline.negated {
+                        if code == 0 { 1 } else { 0 }
+                    } else {
+                        code
+                    };
                     return (res, final_code);
                 }
 
@@ -515,12 +584,13 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
     #[cfg(windows)]
     let job_handle = unsafe {
         let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(
-            std::ptr::null(), 
-            std::ptr::null()
+            std::ptr::null(),
+            std::ptr::null(),
         );
         let mut limit_info: windows_sys::Win32::System::JobObjects::JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
         if !pipeline.background {
-            limit_info.BasicLimitInformation.LimitFlags = windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            limit_info.BasicLimitInformation.LimitFlags =
+                windows_sys::Win32::System::JobObjects::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         }
         windows_sys::Win32::System::JobObjects::SetInformationJobObject(
             handle,
@@ -532,7 +602,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             handle,
             state.iocp_handle as _,
             state.next_job_id as _,
-            0
+            0,
         );
         handle as isize
     };
@@ -552,7 +622,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
         };
 
         if name.is_empty() {
-             continue;
+            continue;
         }
 
         // If a builtin appears in a multi-command pipeline, check for exit
@@ -596,7 +666,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             let (stdin_redir, _) = resolve_redirects(cmd.redirects());
             if let Some(redir) = stdin_redir {
                 match open_stdin_redirect(redir) {
-                    Ok(f) => { command.stdin(Stdio::from(f)); }
+                    Ok(f) => {
+                        command.stdin(Stdio::from(f));
+                    }
                     Err(e) => {
                         eprintln!("{}", e);
                         // Kill already started children
@@ -618,7 +690,9 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             let (_, stdout_redir) = resolve_redirects(cmd.redirects());
             if let Some(redir) = stdout_redir {
                 match open_stdout_redirect(redir) {
-                    Ok(f) => { command.stdout(Stdio::from(f)); }
+                    Ok(f) => {
+                        command.stdout(Stdio::from(f));
+                    }
                     Err(e) => {
                         eprintln!("{}", e);
                         for mut child in children {
@@ -634,7 +708,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
 
         #[cfg(unix)]
         let target_pgid = first_pgid;
-        
+
         #[cfg(unix)]
         let is_bg = pipeline.background;
 
@@ -643,7 +717,11 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
             command
                 .pre_exec(move || {
                     let pid = nix::unistd::getpid();
-                    let pgid = if target_pgid == 0 { pid } else { nix::unistd::Pid::from_raw(target_pgid as i32) };
+                    let pgid = if target_pgid == 0 {
+                        pid
+                    } else {
+                        nix::unistd::Pid::from_raw(target_pgid as i32)
+                    };
                     let _ = nix::unistd::setpgid(pid, pgid);
                     if !is_bg {
                         let stdin = std::os::fd::BorrowedFd::borrow_raw(nix::libc::STDIN_FILENO);
@@ -668,12 +746,12 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 if i == 0 {
                     first_pgid = pid;
                 }
-                
+
                 #[cfg(unix)]
                 if state.shell_pgid.is_some() {
                     let _ = nix::unistd::setpgid(
-                        nix::unistd::Pid::from_raw(pid as i32), 
-                        nix::unistd::Pid::from_raw(first_pgid as i32)
+                        nix::unistd::Pid::from_raw(pid as i32),
+                        nix::unistd::Pid::from_raw(first_pgid as i32),
                     );
                 }
 
@@ -681,7 +759,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                 unsafe {
                     windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(
                         job_handle as _,
-                        std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _
+                        std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _,
                     );
                 }
 
@@ -690,7 +768,7 @@ pub fn execute(pipeline: &Pipeline, state: &mut ShellState) -> (ExecutionResult,
                     name: name.to_string(),
                     state: crate::engine::state::JobState::Running,
                 });
-                
+
                 if i != last_idx {
                     prev_stdout = child.stdout.take();
                 }
@@ -774,11 +852,11 @@ pub fn execute_list(entries: Vec<CommandEntry>, state: &mut ShellState) -> (Exec
         // Decide whether to skip this pipeline based on the connector and the
         // last exit code.
         let skip = match entry.connector {
-            None                    => false,              // first command: always run
-            Some(Connector::Semi)   => false,              // ;  → always run
-            Some(Connector::And)    => last_code != 0,     // && → skip on failure
-            Some(Connector::Or)     => last_code == 0,     // || → skip on success
-            Some(Connector::Amp)    => false,              // &  → always run
+            None => false,                          // first command: always run
+            Some(Connector::Semi) => false,         // ;  → always run
+            Some(Connector::And) => last_code != 0, // && → skip on failure
+            Some(Connector::Or) => last_code == 0,  // || → skip on success
+            Some(Connector::Amp) => false,          // &  → always run
         };
 
         if skip {
@@ -803,22 +881,29 @@ fn execute_block_with_redirects(
     state: &mut ShellState,
 ) -> (ExecutionResult, i32) {
     // Blocks with redirects run in a subshell.
-    let mut command = Command::new(std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cerf")));
-    
-    // We need to format the specific command node. 
-    command.arg("-c").arg(crate::engine::job_control::format_node_full(node));
-    
+    let mut command =
+        Command::new(std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("cerf")));
+
+    // We need to format the specific command node.
+    command
+        .arg("-c")
+        .arg(crate::engine::job_control::format_node_full(node));
+
     let (stdin_redir, stdout_redir) = resolve_redirects(redirects);
-    
+
     if let Some(redir) = stdin_redir {
         let mut expanded_redir = redir.clone();
         expanded_redir.file = expand_vars(&redir.file, &state.variables);
-        if let Ok(f) = open_stdin_redirect(&expanded_redir) { command.stdin(Stdio::from(f)); }
+        if let Ok(f) = open_stdin_redirect(&expanded_redir) {
+            command.stdin(Stdio::from(f));
+        }
     }
     if let Some(redir) = stdout_redir {
         let mut expanded_redir = redir.clone();
         expanded_redir.file = expand_vars(&redir.file, &state.variables);
-        if let Ok(f) = open_stdout_redirect(&expanded_redir) { command.stdout(Stdio::from(f)); }
+        if let Ok(f) = open_stdout_redirect(&expanded_redir) {
+            command.stdout(Stdio::from(f));
+        }
     }
 
     if pipeline.background {
@@ -827,12 +912,23 @@ fn execute_block_with_redirects(
                 let pid = child.id();
                 let job_id = state.next_job_id;
                 println!("[{}] {}", job_id, pid);
-                
+
                 #[cfg(windows)]
                 let job_handle = unsafe {
-                    let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(std::ptr::null(), std::ptr::null());
-                    windows_sys::Win32::System::IO::CreateIoCompletionPort(handle, state.iocp_handle as _, job_id as _, 0);
-                    windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(handle, std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _);
+                    let handle = windows_sys::Win32::System::JobObjects::CreateJobObjectW(
+                        std::ptr::null(),
+                        std::ptr::null(),
+                    );
+                    windows_sys::Win32::System::IO::CreateIoCompletionPort(
+                        handle,
+                        state.iocp_handle as _,
+                        job_id as _,
+                        0,
+                    );
+                    windows_sys::Win32::System::JobObjects::AssignProcessToJobObject(
+                        handle,
+                        std::os::windows::io::AsRawHandle::as_raw_handle(&child) as _,
+                    );
                     handle as isize
                 };
 

@@ -1,7 +1,7 @@
+use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 use std::fs;
 use std::path::Path;
-use crate::engine::state::{ExecutionResult, ShellState};
-use crate::builtins::registry::CommandInfo;
 
 pub const COMMAND_INFO_TEST: CommandInfo = CommandInfo {
     name: "test.check",
@@ -13,8 +13,6 @@ pub const COMMAND_INFO_TEST: CommandInfo = CommandInfo {
 pub fn test_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32) {
     (ExecutionResult::KeepRunning, run(args, false))
 }
-
-
 
 /// The `test` / `[` built-in command.
 ///
@@ -51,10 +49,7 @@ pub fn run(args: &[String], invoked_as_bracket: bool) -> i32 {
     match parse_or(expr_args, &mut pos) {
         Ok(result) => {
             if pos != expr_args.len() {
-                eprintln!(
-                    "cerf: test: unexpected argument `{}`",
-                    expr_args[pos]
-                );
+                eprintln!("cerf: test: unexpected argument `{}`", expr_args[pos]);
                 2
             } else if result {
                 0
@@ -215,9 +210,7 @@ fn eval_unary_file(op: &str, path_str: &str) -> Result<bool, String> {
         "-r" => is_readable(path),
         "-w" => is_writable(path),
         "-x" => is_executable(path),
-        "-L" | "-h" => meta
-            .map(|m| m.file_type().is_symlink())
-            .unwrap_or(false),
+        "-L" | "-h" => meta.map(|m| m.file_type().is_symlink()).unwrap_or(false),
         _ => unreachable!(),
     })
 }

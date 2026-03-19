@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO_ULIMIT: CommandInfo = CommandInfo {
     name: "sys.ulimit",
@@ -30,7 +30,7 @@ pub fn ulimit_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResu
             return (ExecutionResult::KeepRunning, 0);
         }
     }
-    
+
     println!("unlimited");
     (ExecutionResult::KeepRunning, 0)
 }

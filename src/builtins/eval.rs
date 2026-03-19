@@ -1,7 +1,7 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
-use crate::parser;
 use crate::engine;
+use crate::engine::state::{ExecutionResult, ShellState};
+use crate::parser;
 
 pub const COMMAND_INFO_EVAL: CommandInfo = CommandInfo {
     name: "sys.eval",
@@ -14,9 +14,9 @@ pub fn eval_runner(args: &[String], state: &mut ShellState) -> (ExecutionResult,
     if args.is_empty() {
         return (ExecutionResult::KeepRunning, 0);
     }
-    
+
     let command_str = args.join(" ");
-    
+
     if let Some(entries) = parser::parse_pipeline(&command_str, &state.variables) {
         return engine::execute_list(entries, state);
     } else {

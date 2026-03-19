@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "job.bg",
@@ -25,7 +25,10 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         if let Ok(id) = crate::engine::job_control::resolve_job_specifier(&args[0], state) {
             job_id = Some(id);
         } else {
-            eprintln!("cerf: bg: {}", crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err());
+            eprintln!(
+                "cerf: bg: {}",
+                crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err()
+            );
             return 1;
         }
     }
@@ -39,13 +42,16 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                     p.state = crate::engine::JobState::Running;
                 }
             }
-            
+
             #[cfg(unix)]
             {
                 let pgid = job.pgid;
-                let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(-(pgid as i32)), nix::sys::signal::Signal::SIGCONT);
+                let _ = nix::sys::signal::kill(
+                    nix::unistd::Pid::from_raw(-(pgid as i32)),
+                    nix::sys::signal::Signal::SIGCONT,
+                );
             }
-            
+
             #[cfg(windows)]
             {
                 let pids = crate::builtins::kill_cmd::get_job_pids(job.job_handle);
@@ -53,7 +59,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
                     crate::builtins::kill_cmd::suspend_or_resume_process_win(pid, false);
                 }
             }
-            
+
             crate::engine::job_control::set_current_job(state, id);
             0
         } else {

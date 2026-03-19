@@ -1,5 +1,5 @@
 #[cfg(unix)]
-use nix::sys::signal::{signal, SigHandler, Signal};
+use nix::sys::signal::{SigHandler, Signal, signal};
 
 /// Initialize shell signal handlers
 #[cfg(unix)]

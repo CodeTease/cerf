@@ -1,6 +1,6 @@
-use crate::engine::state::{ExecutionResult, ShellState};
-use crate::engine::job_control::wait_for_job;
 use crate::builtins::registry::CommandInfo;
+use crate::engine::job_control::wait_for_job;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "job.wait",
@@ -27,7 +27,7 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
         } else {
             args[0].parse().ok()
         };
-        
+
         if let Some(id) = job_id {
             if state.jobs.contains_key(&id) {
                 wait_for_job(id, state, false)
@@ -37,7 +37,10 @@ pub fn run(args: &[String], state: &mut ShellState) -> i32 {
             }
         } else {
             if args[0].starts_with('%') {
-                eprintln!("cerf: wait: {}", crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err());
+                eprintln!(
+                    "cerf: wait: {}",
+                    crate::engine::job_control::resolve_job_specifier(&args[0], state).unwrap_err()
+                );
             } else {
                 eprintln!("cerf: wait: '{}': not a pid or valid job spec", args[0]);
             }

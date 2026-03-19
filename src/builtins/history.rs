@@ -1,6 +1,6 @@
-use std::io::Write;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::io::Write;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "sys.history",

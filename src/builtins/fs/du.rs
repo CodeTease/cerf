@@ -1,7 +1,7 @@
-use jwalk::WalkDir;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use jwalk::WalkDir;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.du",
@@ -21,7 +21,10 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
     for target in targets {
         let path = expand_home(&target);
         if !path.exists() {
-            eprintln!("cerf: fs.du: cannot access '{}': No such file or directory", target);
+            eprintln!(
+                "cerf: fs.du: cannot access '{}': No such file or directory",
+                target
+            );
             exit_code = 1;
             continue;
         }

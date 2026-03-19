@@ -1,7 +1,6 @@
-use std::path::PathBuf;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
-
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::path::PathBuf;
 
 pub const COMMAND_INFO_EXIT: CommandInfo = CommandInfo {
     name: "sys.exit",
@@ -74,8 +73,7 @@ pub fn exec(args: &[String]) -> Result<i32, String> {
     let cmd_name = &args[0];
     let cmd_args = &args[1..];
 
-    let resolved: PathBuf = find_executable(cmd_name)
-        .unwrap_or_else(|| expand_home(cmd_name));
+    let resolved: PathBuf = find_executable(cmd_name).unwrap_or_else(|| expand_home(cmd_name));
 
     // ── Unix: true exec (replaces the process image) ─────────────────
     #[cfg(unix)]
@@ -83,9 +81,7 @@ pub fn exec(args: &[String]) -> Result<i32, String> {
         use std::os::unix::process::CommandExt;
 
         // Restore default signal handling before exec-ing.
-        let err = Command::new(&resolved)
-            .args(cmd_args)
-            .exec(); // never returns on success
+        let err = Command::new(&resolved).args(cmd_args).exec(); // never returns on success
 
         return Err(format!("cerf: exec: {}: {}", cmd_name, err));
     }
@@ -110,10 +106,7 @@ pub fn exec(args: &[String]) -> Result<i32, String> {
 
         match command.spawn() {
             Ok(mut child) => {
-                let code = child
-                    .wait()
-                    .map(|s| s.code().unwrap_or(1))
-                    .unwrap_or(1);
+                let code = child.wait().map(|s| s.code().unwrap_or(1)).unwrap_or(1);
                 Ok(code)
             }
             Err(e) => {

@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 use std::io::{self, Write};
 
 pub const COMMAND_INFO_PRINTF: CommandInfo = CommandInfo {
@@ -14,14 +14,14 @@ pub fn printf_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResu
         eprintln!("cerf: printf: usage: printf format [arguments]");
         return (ExecutionResult::KeepRunning, 1);
     }
-    
+
     let format = &args[0];
     let mut args_iter = args[1..].iter();
-    
+
     let mut out = String::new();
     let chars: Vec<char> = format.chars().collect();
     let mut i = 0;
-    
+
     while i < chars.len() {
         let mut ch = chars[i];
         if ch == '\\' && i + 1 < chars.len() {
@@ -41,7 +41,7 @@ pub fn printf_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResu
         } else if ch == '%' && i + 1 < chars.len() {
             i += 1;
             ch = chars[i];
-            
+
             if ch == '%' {
                 out.push('%');
             } else {
@@ -76,10 +76,10 @@ pub fn printf_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResu
         }
         i += 1;
     }
-    
-    // In bash, if args remaining, format is reused. 
+
+    // In bash, if args remaining, format is reused.
     // We do a simple version: don't loop format.
-    
+
     print!("{}", out);
     let _ = io::stdout().flush();
     (ExecutionResult::KeepRunning, 0)

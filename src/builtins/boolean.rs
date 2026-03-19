@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO_TRUE: CommandInfo = CommandInfo {
     name: "test.true",

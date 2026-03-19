@@ -5,10 +5,8 @@ mod expand;
 // Re-export the public surface so that `crate::parser::*` keeps working
 // for all existing callers (engine.rs, main.rs, etc.).
 pub use ast::{Arg, CommandEntry, CommandNode, Connector, Pipeline, Redirect, RedirectKind};
-pub use expand::expand_vars;
 pub use combinators::is_reserved_word;
-
-
+pub use expand::expand_vars;
 
 // ── Public API ────────────────────────────────────────────────────────────
 
@@ -63,10 +61,27 @@ pub fn is_incomplete(input: &str) -> bool {
     let mut chars = s.chars().peekable();
     while let Some(ch) = chars.next() {
         match ch {
-            '"' => { while let Some(c) = chars.next() { if c == '"' { break; } } }
-            '\'' => { while let Some(c) = chars.next() { if c == '\'' { break; } } }
-            '#' => { // skip line comments
-                for c in chars.by_ref() { if c == '\n' { break; } }
+            '"' => {
+                while let Some(c) = chars.next() {
+                    if c == '"' {
+                        break;
+                    }
+                }
+            }
+            '\'' => {
+                while let Some(c) = chars.next() {
+                    if c == '\'' {
+                        break;
+                    }
+                }
+            }
+            '#' => {
+                // skip line comments
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        break;
+                    }
+                }
             }
             '{' => depth += 1,
             '}' => depth -= 1,
@@ -80,7 +95,10 @@ pub fn is_incomplete(input: &str) -> bool {
 ///
 /// Returns `None` if the line is empty or a comment.
 /// Returns `Some(entries)` where `entries` has at least one element.
-pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
+pub fn parse_input(
+    input: &str,
+    shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>,
+) -> Option<Vec<CommandEntry>> {
     let preprocessed = join_continuations(input);
     let expanded = expand_vars(&preprocessed, shell_vars);
     let s = expanded.trim();
@@ -103,13 +121,15 @@ pub fn parse_input(input: &str, shell_vars: &std::collections::HashMap<String, c
         Err(_) => {
             eprintln!("cerf: syntax error: incomplete or invalid command");
             None
-        },
+        }
     }
 }
 
-
 /// Backwards-compatible alias — kept so call-sites in main.rs don't break.
-pub fn parse_pipeline(input: &str, shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<Vec<CommandEntry>> {
+pub fn parse_pipeline(
+    input: &str,
+    shell_vars: &std::collections::HashMap<String, crate::engine::state::Variable>,
+) -> Option<Vec<CommandEntry>> {
     parse_input(input, shell_vars)
 }
 
@@ -117,7 +137,10 @@ pub fn parse_line(input: &str) -> Option<CommandNode> {
     parse_line_with_vars(input, &std::collections::HashMap::new())
 }
 
-pub fn parse_line_with_vars(input: &str, vars: &std::collections::HashMap<String, crate::engine::state::Variable>) -> Option<CommandNode> {
+pub fn parse_line_with_vars(
+    input: &str,
+    vars: &std::collections::HashMap<String, crate::engine::state::Variable>,
+) -> Option<CommandNode> {
     parse_input(input, vars).and_then(|mut v| {
         if v.len() == 1 && v[0].pipeline.commands.len() == 1 {
             Some(v.remove(0).pipeline.commands.remove(0))
@@ -193,9 +216,15 @@ mod tests {
         let entries = parse_pipeline("echo hello ; echo world", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(
+            entries[0].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("echo")
+        );
         assert_eq!(entries[1].connector, Some(Connector::Semi));
-        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(
+            entries[1].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("echo")
+        );
     }
 
     #[test]
@@ -204,10 +233,19 @@ mod tests {
         let entries = parse_pipeline("make && make install", &vars).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].connector, None);
-        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("make"));
+        assert_eq!(
+            entries[0].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("make")
+        );
         assert_eq!(entries[1].connector, Some(Connector::And));
-        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("make"));
-        assert_eq!(arg_values(entries[1].pipeline.commands[0].args()), vec!["install"]);
+        assert_eq!(
+            entries[1].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("make")
+        );
+        assert_eq!(
+            arg_values(entries[1].pipeline.commands[0].args()),
+            vec!["install"]
+        );
     }
 
     #[test]
@@ -215,10 +253,19 @@ mod tests {
         let vars = std::collections::HashMap::new();
         let entries = parse_pipeline("cat file.txt || echo missing", &vars).unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("cat"));
+        assert_eq!(
+            entries[0].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("cat")
+        );
         assert_eq!(entries[1].connector, Some(Connector::Or));
-        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
-        assert_eq!(arg_values(entries[1].pipeline.commands[0].args()), vec!["missing"]);
+        assert_eq!(
+            entries[1].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("echo")
+        );
+        assert_eq!(
+            arg_values(entries[1].pipeline.commands[0].args()),
+            vec!["missing"]
+        );
     }
 
     #[test]
@@ -241,7 +288,10 @@ mod tests {
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 2);
         assert_eq!(pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
-        assert_eq!(pipeline.commands[1].name().map(|n| n.as_str()), Some("grep"));
+        assert_eq!(
+            pipeline.commands[1].name().map(|n| n.as_str()),
+            Some("grep")
+        );
         assert_eq!(arg_values(pipeline.commands[1].args()), vec!["foo"]);
     }
 
@@ -253,8 +303,14 @@ mod tests {
         let pipeline = &entries[0].pipeline;
         assert_eq!(pipeline.commands.len(), 3);
         assert_eq!(pipeline.commands[0].name().map(|n| n.as_str()), Some("cat"));
-        assert_eq!(pipeline.commands[1].name().map(|n| n.as_str()), Some("sort"));
-        assert_eq!(pipeline.commands[2].name().map(|n| n.as_str()), Some("uniq"));
+        assert_eq!(
+            pipeline.commands[1].name().map(|n| n.as_str()),
+            Some("sort")
+        );
+        assert_eq!(
+            pipeline.commands[2].name().map(|n| n.as_str()),
+            Some("uniq")
+        );
     }
 
     #[test]
@@ -263,10 +319,16 @@ mod tests {
         let entries = parse_pipeline("! ls", &vars).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].pipeline.negated);
-        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(
+            entries[0].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("ls")
+        );
 
         let entries = parse_pipeline("!  ls -la", &vars).unwrap();
-        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
+        assert_eq!(
+            entries[0].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("ls")
+        );
         assert!(entries[0].pipeline.negated);
     }
 
@@ -286,12 +348,21 @@ mod tests {
         assert_eq!(entries.len(), 2);
         // First entry is a pipeline: ls | grep foo
         assert_eq!(entries[0].pipeline.commands.len(), 2);
-        assert_eq!(entries[0].pipeline.commands[0].name().map(|n| n.as_str()), Some("ls"));
-        assert_eq!(entries[0].pipeline.commands[1].name().map(|n| n.as_str()), Some("grep"));
+        assert_eq!(
+            entries[0].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("ls")
+        );
+        assert_eq!(
+            entries[0].pipeline.commands[1].name().map(|n| n.as_str()),
+            Some("grep")
+        );
         // Second entry is a simple command: echo done
         assert_eq!(entries[1].connector, Some(Connector::And));
         assert_eq!(entries[1].pipeline.commands.len(), 1);
-        assert_eq!(entries[1].pipeline.commands[0].name().map(|n| n.as_str()), Some("echo"));
+        assert_eq!(
+            entries[1].pipeline.commands[0].name().map(|n| n.as_str()),
+            Some("echo")
+        );
     }
 
     // ── redirection tests ─────────────────────────────────────────────────
@@ -338,11 +409,20 @@ mod tests {
         // First command: cat < in.txt
         assert_eq!(pipeline.commands[0].name().map(|n| n.as_str()), Some("cat"));
         assert_eq!(pipeline.commands[0].redirects().len(), 1);
-        assert_eq!(pipeline.commands[0].redirects()[0].kind, RedirectKind::StdinFrom);
+        assert_eq!(
+            pipeline.commands[0].redirects()[0].kind,
+            RedirectKind::StdinFrom
+        );
         // Last command: sort > out.txt
-        assert_eq!(pipeline.commands[1].name().map(|n| n.as_str()), Some("sort"));
+        assert_eq!(
+            pipeline.commands[1].name().map(|n| n.as_str()),
+            Some("sort")
+        );
         assert_eq!(pipeline.commands[1].redirects().len(), 1);
-        assert_eq!(pipeline.commands[1].redirects()[0].kind, RedirectKind::StdoutOverwrite);
+        assert_eq!(
+            pipeline.commands[1].redirects()[0].kind,
+            RedirectKind::StdoutOverwrite
+        );
     }
 
     // ── integration: parse_pipeline with env expansion ────────────────────
@@ -350,7 +430,10 @@ mod tests {
     #[test]
     fn test_parse_line_expands_var_in_arg() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_DIR".to_string(), crate::engine::state::Variable::new_string("/tmp/test".to_string()));
+        vars.insert(
+            "CERF_DIR".to_string(),
+            crate::engine::state::Variable::new_string("/tmp/test".to_string()),
+        );
         let cmd = parse_line_with_vars("cd $CERF_DIR", &vars).unwrap();
         assert_eq!(cmd.name().map(|n| n.as_str()), Some("cd"));
         assert_eq!(arg_values(cmd.args()), vec!["/tmp/test"]);
@@ -359,7 +442,10 @@ mod tests {
     #[test]
     fn test_parse_line_expands_var_in_quoted_arg() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("CERF_MSG".to_string(), crate::engine::state::Variable::new_string("hello world".to_string()));
+        vars.insert(
+            "CERF_MSG".to_string(),
+            crate::engine::state::Variable::new_string("hello world".to_string()),
+        );
         let cmd = parse_line_with_vars("echo \"$CERF_MSG\"", &vars).unwrap();
         assert_eq!(cmd.name().map(|n| n.as_str()), Some("echo"));
         assert_eq!(arg_values(cmd.args()), vec!["hello world"]);
@@ -368,9 +454,15 @@ mod tests {
     #[test]
     fn test_parse_line_expands_path_var() {
         let mut vars = std::collections::HashMap::new();
-        vars.insert("PATH".to_string(), crate::engine::state::Variable::new_string("some_path".to_string()));
+        vars.insert(
+            "PATH".to_string(),
+            crate::engine::state::Variable::new_string("some_path".to_string()),
+        );
         let expanded = expand_vars("echo $PATH", &vars);
-        assert!(expanded.contains("some_path"), "expanded line should contain the PATH value");
+        assert!(
+            expanded.contains("some_path"),
+            "expanded line should contain the PATH value"
+        );
     }
 
     // ── shell variable tests ──────────────────────────────────────────────
@@ -401,17 +493,24 @@ mod tests {
     #[test]
     fn test_parse_assignment_quoted_value() {
         let cmd = parse_line("MSG=\"hello world\" echo").unwrap();
-        assert_eq!(cmd.assignments(), &[("MSG".to_string(), "hello world".to_string())]);
+        assert_eq!(
+            cmd.assignments(),
+            &[("MSG".to_string(), "hello world".to_string())]
+        );
         assert_eq!(cmd.name().map(|n| n.as_str()), Some("echo"));
     }
 
     // ── control flow tests ──────────────────────────────────────────────────
-    
+
     #[test]
     fn test_parse_if_simple() {
         let cmd = parse_line("if true { echo ok }").unwrap();
         match cmd {
-            CommandNode::If { branches, else_branch, .. } => {
+            CommandNode::If {
+                branches,
+                else_branch,
+                ..
+            } => {
                 assert_eq!(branches.len(), 1);
                 assert!(else_branch.is_none());
             }
@@ -423,7 +522,11 @@ mod tests {
     fn test_parse_if_elif_else() {
         let cmd = parse_line("if cmd1 { echo 1 } elif cmd2 { echo 2 } else { echo 3 }").unwrap();
         match cmd {
-            CommandNode::If { branches, else_branch, .. } => {
+            CommandNode::If {
+                branches,
+                else_branch,
+                ..
+            } => {
                 assert_eq!(branches.len(), 2);
                 assert!(else_branch.is_some());
             }
@@ -447,7 +550,9 @@ mod tests {
     fn test_parse_for_loop() {
         let cmd = parse_line("for x in a b c { echo $x }").unwrap();
         match cmd {
-            CommandNode::For { var, items, body, .. } => {
+            CommandNode::For {
+                var, items, body, ..
+            } => {
                 assert_eq!(var, "x");
                 assert_eq!(arg_values(&items), vec!["a", "b", "c"]);
                 assert_eq!(body.len(), 1);
@@ -548,7 +653,9 @@ mod tests {
         let entries = parse_pipeline(input, &vars).unwrap();
         assert_eq!(entries.len(), 1);
         match &entries[0].pipeline.commands[0] {
-            CommandNode::For { var, items, body, .. } => {
+            CommandNode::For {
+                var, items, body, ..
+            } => {
                 assert_eq!(var, "x");
                 assert_eq!(arg_values(items), vec!["a", "b", "c"]);
                 assert_eq!(body.len(), 1);
@@ -564,4 +671,4 @@ mod tests {
         let entries = parse_pipeline(input, &vars).unwrap();
         assert_eq!(entries.len(), 2);
     }
-    }
+}

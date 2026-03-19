@@ -2,9 +2,9 @@ use std::cell::Cell;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::engine::expand_home;
-use crate::engine::{execute_list, ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::expand_home;
+use crate::engine::{ExecutionResult, ShellState, execute_list};
 use crate::parser;
 
 pub const COMMAND_INFO_SOURCE: CommandInfo = CommandInfo {
@@ -13,7 +13,6 @@ pub const COMMAND_INFO_SOURCE: CommandInfo = CommandInfo {
     usage: "env.source filename [arguments]\n\nExecute commands from a file in the current shell.",
     run,
 };
-
 
 /// Maximum nesting depth for `source` / `.` to prevent infinite loops
 /// (e.g. `~/.cerfrc` sourcing itself).

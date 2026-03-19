@@ -1,7 +1,7 @@
-use std::fs;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::fs;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.touch",
@@ -21,10 +21,7 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
         let path = expand_home(arg);
         let res = if path.exists() {
             // Update timestamp - for now just open and close it
-            fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .map(|_| ())
+            fs::OpenOptions::new().write(true).open(&path).map(|_| ())
         } else {
             fs::File::create(&path).map(|_| ())
         };

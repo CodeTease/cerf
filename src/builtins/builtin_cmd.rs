@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO_BUILTIN: CommandInfo = CommandInfo {
     name: "sys.builtin",
@@ -13,11 +13,11 @@ pub fn builtin_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
         return (ExecutionResult::KeepRunning, 0);
     }
     let name = &args[0];
-    
+
     if let Some(cmd_info) = crate::builtins::registry::find_command(name) {
         return (cmd_info.run)(&args[1..], state);
     }
-    
+
     eprintln!("cerf: builtin: {}: not a shell builtin", name);
     (ExecutionResult::KeepRunning, 1)
 }

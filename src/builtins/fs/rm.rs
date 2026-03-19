@@ -1,7 +1,7 @@
-use std::fs;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::fs;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.rm",
@@ -36,7 +36,10 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
     for arg in files {
         let path = expand_home(arg);
         if !path.exists() {
-            eprintln!("cerf: fs.rm: cannot remove '{}': No such file or directory", arg);
+            eprintln!(
+                "cerf: fs.rm: cannot remove '{}': No such file or directory",
+                arg
+            );
             exit_code = 1;
             continue;
         }

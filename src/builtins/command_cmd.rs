@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO_COMMAND: CommandInfo = CommandInfo {
     name: "sys.command",
@@ -12,16 +12,17 @@ pub fn command_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
     if args.is_empty() {
         return (ExecutionResult::KeepRunning, 0);
     }
-    
+
     let name = &args[0];
-    
+
     if let Some(cmd_info) = crate::builtins::registry::find_command(name) {
         return (cmd_info.run)(&args[1..], state);
     }
-    
+
     // external executable
-    let resolved = crate::engine::path::find_executable(name).unwrap_or_else(|| crate::engine::path::expand_home(name));
-    
+    let resolved = crate::engine::path::find_executable(name)
+        .unwrap_or_else(|| crate::engine::path::expand_home(name));
+
     #[cfg(windows)]
     let mut command = {
         let is_batch = resolved.extension().map_or(false, |e| {
@@ -36,13 +37,13 @@ pub fn command_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
             std::process::Command::new(&resolved)
         }
     };
-    
+
     #[cfg(unix)]
     let mut command = std::process::Command::new(&resolved);
 
     // This bypasses proper process job control for Cerf but works as a simple implementation for now.
     command.args(&args[1..]);
-    
+
     let code = match command.status() {
         Ok(s) => s.code().unwrap_or(1),
         Err(e) => {
@@ -54,6 +55,6 @@ pub fn command_runner(args: &[String], state: &mut ShellState) -> (ExecutionResu
             127
         }
     };
-    
+
     (ExecutionResult::KeepRunning, code)
 }

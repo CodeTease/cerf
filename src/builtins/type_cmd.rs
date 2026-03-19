@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::collections::HashMap;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "sys.type",
@@ -25,7 +25,7 @@ pub fn type_of(cmd: &str, aliases: &HashMap<String, String>) -> String {
     if crate::parser::is_reserved_word(cmd) {
         return format!("{} is a shell keyword", cmd);
     }
-    
+
     // 3. Shell builtins.
     if crate::builtins::registry::find_command(cmd).is_some() {
         return format!("{} is a shell builtin", cmd);

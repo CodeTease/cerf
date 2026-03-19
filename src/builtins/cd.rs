@@ -1,6 +1,6 @@
-use std::env;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::env;
 
 pub const COMMAND_INFO_CD: CommandInfo = CommandInfo {
     name: "dir.cd",
@@ -37,7 +37,10 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
     let target = if args.is_empty() {
         return Err("too few arguments".to_string());
     } else if args[0] == "-" {
-        state.previous_dir.clone().ok_or("OLDPWD not set".to_string())?
+        state
+            .previous_dir
+            .clone()
+            .ok_or("OLDPWD not set".to_string())?
     } else {
         crate::engine::expand_home(&args[0])
     };
@@ -46,16 +49,18 @@ pub fn run(args: &[String], state: &mut ShellState) -> Result<(), String> {
         // Standard error message
         return Err(format!("no such file or directory: {}", target.display()));
     }
-    
+
     state.previous_dir = Some(current);
-    
+
     // Update PWD
     if let Ok(new_cwd) = env::current_dir() {
         let new_pwd = new_cwd.to_string_lossy().to_string();
         let mut var = crate::engine::state::Variable::new_string(new_pwd.clone());
         var.exported = true;
         state.set_var("PWD", var);
-        unsafe { env::set_var("PWD", new_pwd); }
+        unsafe {
+            env::set_var("PWD", new_pwd);
+        }
     }
     Ok(())
 }

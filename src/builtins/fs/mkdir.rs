@@ -1,7 +1,7 @@
-use std::fs;
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::fs;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.mkdir",

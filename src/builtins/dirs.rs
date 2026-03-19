@@ -1,7 +1,7 @@
+use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 use std::env;
 use std::io::Write;
-use crate::engine::state::{ExecutionResult, ShellState};
-use crate::builtins::registry::CommandInfo;
 
 // For now, we stub redirects internally as we change the signature to match BuiltinRunner
 pub const COMMAND_INFO_PUSHD: CommandInfo = CommandInfo {
@@ -50,7 +50,11 @@ pub fn dirs_runner(_args: &[String], state: &mut ShellState) -> (ExecutionResult
     (ExecutionResult::KeepRunning, 0)
 }
 
-pub fn pushd(args: &[String], state: &mut ShellState, stdout_redirect: Option<std::fs::File>) -> Result<(), String> {
+pub fn pushd(
+    args: &[String],
+    state: &mut ShellState,
+    stdout_redirect: Option<std::fs::File>,
+) -> Result<(), String> {
     let current = env::current_dir().map_err(|e| e.to_string())?;
 
     if args.is_empty() {
@@ -59,15 +63,18 @@ pub fn pushd(args: &[String], state: &mut ShellState, stdout_redirect: Option<st
         }
 
         let top = state.dir_stack.pop().unwrap();
-        
+
         if let Err(_) = env::set_current_dir(&top) {
             state.dir_stack.push(top.clone());
-            return Err(format!("pushd: no such file or directory: {}", top.display()));
+            return Err(format!(
+                "pushd: no such file or directory: {}",
+                top.display()
+            ));
         }
 
         state.previous_dir = Some(current.clone());
         state.dir_stack.push(current);
-        
+
         run_dirs(state, stdout_redirect);
         return Ok(());
     }
@@ -75,17 +82,24 @@ pub fn pushd(args: &[String], state: &mut ShellState, stdout_redirect: Option<st
     let target = crate::engine::expand_home(&args[0]);
 
     if let Err(_) = env::set_current_dir(&target) {
-        return Err(format!("pushd: no such file or directory: {}", target.display()));
+        return Err(format!(
+            "pushd: no such file or directory: {}",
+            target.display()
+        ));
     }
 
     state.previous_dir = Some(current.clone());
     state.dir_stack.push(current);
-    
+
     run_dirs(state, stdout_redirect);
     Ok(())
 }
 
-pub fn popd(_args: &[String], state: &mut ShellState, stdout_redirect: Option<std::fs::File>) -> Result<(), String> {
+pub fn popd(
+    _args: &[String],
+    state: &mut ShellState,
+    stdout_redirect: Option<std::fs::File>,
+) -> Result<(), String> {
     if state.dir_stack.is_empty() {
         return Err("popd: directory stack empty".to_string());
     }
@@ -95,11 +109,14 @@ pub fn popd(_args: &[String], state: &mut ShellState, stdout_redirect: Option<st
 
     if let Err(_) = env::set_current_dir(&target) {
         state.dir_stack.push(target.clone());
-        return Err(format!("popd: no such file or directory: {}", target.display()));
+        return Err(format!(
+            "popd: no such file or directory: {}",
+            target.display()
+        ));
     }
 
     state.previous_dir = Some(current);
-    
+
     run_dirs(state, stdout_redirect);
     Ok(())
 }

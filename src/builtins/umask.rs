@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO_UMASK: CommandInfo = CommandInfo {
     name: "sys.umask",
@@ -24,7 +24,7 @@ pub fn umask_runner(args: &[String], _state: &mut ShellState) -> (ExecutionResul
             return (ExecutionResult::KeepRunning, 1);
         }
     }
-    
+
     #[cfg(windows)]
     {
         if args.is_empty() {

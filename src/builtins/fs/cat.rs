@@ -1,8 +1,8 @@
-use std::fs;
-use std::io::{self, BufRead, Write};
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use std::fs;
+use std::io::{self, BufRead, Write};
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.cat",
@@ -39,7 +39,7 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
     let mut exit_code = 0;
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    
+
     let mut line_counter = 1;
     let mut prev_was_blank = false;
 
@@ -58,7 +58,7 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                 } else {
                     let mut reader = io::BufReader::new(file);
                     let mut buffer = Vec::new();
-                    
+
                     loop {
                         buffer.clear();
                         match reader.read_until(b'\n', &mut buffer) {

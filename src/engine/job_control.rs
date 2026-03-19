@@ -1,7 +1,7 @@
-use crate::engine::state::{ShellState, JobState};
+use crate::engine::state::{JobState, ShellState};
 
 #[cfg(unix)]
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 #[cfg(unix)]
 use nix::unistd::Pid;
 
@@ -9,7 +9,10 @@ use nix::unistd::Pid;
 #[cfg(unix)]
 pub fn restore_terminal(state: &ShellState) {
     if let (Some(term), Some(shell_pgid)) = (state.shell_term, state.shell_pgid) {
-        let _ = nix::unistd::tcsetpgrp(unsafe { std::os::fd::BorrowedFd::borrow_raw(term) }, shell_pgid);
+        let _ = nix::unistd::tcsetpgrp(
+            unsafe { std::os::fd::BorrowedFd::borrow_raw(term) },
+            shell_pgid,
+        );
     }
 }
 
@@ -20,13 +23,16 @@ pub fn restore_terminal(_state: &ShellState) {}
 #[cfg(unix)]
 pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
     let mut last_code = 0;
-    
+
     // Give terminal to job
     if fg {
         if let Some(job) = state.jobs.get(&job_id) {
             let pgid = Pid::from_raw(job.pgid as i32);
             if let Some(term) = state.shell_term {
-                let _ = nix::unistd::tcsetpgrp(unsafe { std::os::fd::BorrowedFd::borrow_raw(term) }, pgid);
+                let _ = nix::unistd::tcsetpgrp(
+                    unsafe { std::os::fd::BorrowedFd::borrow_raw(term) },
+                    pgid,
+                );
             }
         } else {
             return 0; // Job not found
@@ -38,9 +44,9 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
             Some(j) => j,
             None => break,
         };
-        
+
         let pgid = job.pgid;
-        
+
         if job.is_stopped() {
             if fg {
                 println!("\n[{}] Stopped  {}", job.id, job.command);
@@ -56,17 +62,17 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
             }
             break;
         }
-        
+
         if !fg {
             // Done waiting since we just wanted to perform an update or we don't block
             break;
         }
-        
+
         let wait_res = waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WUNTRACED));
         match wait_res {
             Ok(WaitStatus::Exited(pid, code)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Done(code));
-            },
+            }
             Ok(WaitStatus::Signaled(pid, sig, _)) => {
                 let code = 128 + sig as i32;
                 update_pid_state(state, pid.as_raw() as u32, JobState::Done(code));
@@ -77,13 +83,13 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
                         }
                     }
                 }
-            },
+            }
             Ok(WaitStatus::Stopped(pid, _sig)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Stopped);
-            },
+            }
             Ok(WaitStatus::Continued(pid)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Running);
-            },
+            }
             Err(nix::errno::Errno::ECHILD) => {
                 // No more children at all
                 if let Some(job) = state.jobs.get_mut(&job_id) {
@@ -93,7 +99,7 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
                         }
                     }
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -101,13 +107,12 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
     if fg {
         restore_terminal(state);
     }
-    
+
     last_code
 }
 
 #[cfg(windows)]
 pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
-
     let mut last_code = 0;
 
     if fg {
@@ -119,7 +124,7 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
             Some(j) => j,
             None => break,
         };
-        
+
         if job.is_stopped() {
             if fg {
                 println!("\n[{}] Stopped  {}", job.id, job.command);
@@ -135,21 +140,21 @@ pub fn wait_for_job(job_id: usize, state: &mut ShellState, fg: bool) -> i32 {
             }
             break;
         }
-        
+
         if !fg {
             break;
         }
 
         // Pump messages from the generic IOCP receiver if available
         crate::engine::job_control::pump_iocp(state);
-        
+
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    
+
     if fg {
         crate::FG_JOB.store(0, std::sync::atomic::Ordering::Relaxed);
     }
-    
+
     last_code
 }
 
@@ -168,7 +173,10 @@ pub fn pump_iocp(state: &mut ShellState) {
 
 #[cfg(windows)]
 pub fn handle_iocp_msg(state: &mut ShellState, msg: IocpMessage) {
-    use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO, JOB_OBJECT_MSG_EXIT_PROCESS, JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS};
+    use windows_sys::Win32::System::SystemServices::{
+        JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS, JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO,
+        JOB_OBJECT_MSG_EXIT_PROCESS,
+    };
     let event_job_id = msg.job_id;
     let pid = msg.pid;
 
@@ -180,16 +188,21 @@ pub fn handle_iocp_msg(state: &mut ShellState, msg: IocpMessage) {
                 }
             }
         }
-    } else if msg.msg == JOB_OBJECT_MSG_EXIT_PROCESS || msg.msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
+    } else if msg.msg == JOB_OBJECT_MSG_EXIT_PROCESS
+        || msg.msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS
+    {
         let mut exit_code = 0;
         unsafe {
             let proc_handle = windows_sys::Win32::System::Threading::OpenProcess(
                 windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION,
                 0,
-                pid
+                pid,
             );
             if !proc_handle.is_null() {
-                windows_sys::Win32::System::Threading::GetExitCodeProcess(proc_handle, &mut exit_code);
+                windows_sys::Win32::System::Threading::GetExitCodeProcess(
+                    proc_handle,
+                    &mut exit_code,
+                );
                 windows_sys::Win32::Foundation::CloseHandle(proc_handle);
             } else if msg.msg == JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS {
                 exit_code = 1;
@@ -197,7 +210,7 @@ pub fn handle_iocp_msg(state: &mut ShellState, msg: IocpMessage) {
         }
         update_pid_state(state, pid, JobState::Done(exit_code as i32));
     }
-    
+
     // Check if job is fully done and report if it was a background job
     // Actually handled by update_jobs printing
 }
@@ -206,24 +219,27 @@ pub fn handle_iocp_msg(state: &mut ShellState, msg: IocpMessage) {
 #[cfg(unix)]
 pub fn update_jobs(state: &mut ShellState) {
     loop {
-        let wait_res = waitpid(Pid::from_raw(-1), Some(WaitPidFlag::WNOHANG | WaitPidFlag::WUNTRACED | WaitPidFlag::WCONTINUED));
+        let wait_res = waitpid(
+            Pid::from_raw(-1),
+            Some(WaitPidFlag::WNOHANG | WaitPidFlag::WUNTRACED | WaitPidFlag::WCONTINUED),
+        );
         match wait_res {
             Ok(WaitStatus::Exited(pid, code)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Done(code));
-            },
+            }
             Ok(WaitStatus::Signaled(pid, sig, _)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Done(128 + sig as i32));
-            },
+            }
             Ok(WaitStatus::Stopped(pid, _sig)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Stopped);
-            },
+            }
             Ok(WaitStatus::Continued(pid)) => {
                 update_pid_state(state, pid.as_raw() as u32, JobState::Running);
-            },
+            }
             _ => break,
         }
     }
-    
+
     // Print and remove done jobs
     let mut to_remove = Vec::new();
     for (&id, job) in &mut state.jobs {
@@ -235,7 +251,7 @@ pub fn update_jobs(state: &mut ShellState) {
             to_remove.push(id);
         }
     }
-    
+
     for id in to_remove {
         state.jobs.remove(&id);
     }
@@ -254,7 +270,7 @@ fn update_pid_state(state: &mut ShellState, pid: u32, new_state: JobState) {
 #[cfg(windows)]
 pub fn update_jobs(state: &mut ShellState) {
     pump_iocp(state);
-    
+
     // Print and remove done jobs
     let mut to_remove = Vec::new();
     for (&id, job) in &mut state.jobs {
@@ -266,16 +282,20 @@ pub fn update_jobs(state: &mut ShellState) {
             to_remove.push(id);
         }
     }
-    
+
     for id in to_remove {
         state.jobs.remove(&id);
     }
 }
 
 pub fn format_command(pipeline: &crate::parser::Pipeline) -> String {
-    pipeline.commands.iter().map(|c| {
-        format_node_full(c)
-    }).collect::<Vec<_>>().join(" | ") + if pipeline.background { " &" } else { "" }
+    pipeline
+        .commands
+        .iter()
+        .map(|c| format_node_full(c))
+        .collect::<Vec<_>>()
+        .join(" | ")
+        + if pipeline.background { " &" } else { "" }
 }
 
 pub fn format_node_full(node: &crate::parser::CommandNode) -> String {
@@ -286,11 +306,19 @@ pub fn format_node_full(node: &crate::parser::CommandNode) -> String {
                 parts.push(n.clone());
             }
             parts.extend(s.args.iter().map(|a| {
-                if a.quoted { format!("\"{}\"", a.value) } else { a.value.clone() }
+                if a.quoted {
+                    format!("\"{}\"", a.value)
+                } else {
+                    a.value.clone()
+                }
             }));
             parts.join(" ")
         }
-        crate::parser::CommandNode::If { branches, else_branch, .. } => {
+        crate::parser::CommandNode::If {
+            branches,
+            else_branch,
+            ..
+        } => {
             let mut s = String::new();
             for (i, (cond, body)) in branches.iter().enumerate() {
                 if i == 0 {
@@ -310,9 +338,23 @@ pub fn format_node_full(node: &crate::parser::CommandNode) -> String {
             }
             s
         }
-        crate::parser::CommandNode::For { var, items, body, .. } => {
+        crate::parser::CommandNode::For {
+            var, items, body, ..
+        } => {
             let mut s = format!("for {} in ", var);
-            s.push_str(&items.iter().map(|a| if a.quoted { format!("\"{}\"", a.value) } else { a.value.clone() }).collect::<Vec<_>>().join(" "));
+            s.push_str(
+                &items
+                    .iter()
+                    .map(|a| {
+                        if a.quoted {
+                            format!("\"{}\"", a.value)
+                        } else {
+                            a.value.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
             s.push_str(" { ");
             s.push_str(&format_list(body));
             s.push_str(" }");
@@ -344,18 +386,22 @@ pub fn format_node_full(node: &crate::parser::CommandNode) -> String {
 }
 
 fn format_list(entries: &[crate::parser::CommandEntry]) -> String {
-    entries.iter().map(|e| {
-        let mut s = crate::engine::job_control::format_command(&e.pipeline);
-        if let Some(conn) = e.connector {
-            match conn {
-                crate::parser::Connector::And => s.push_str(" && "),
-                crate::parser::Connector::Or => s.push_str(" || "),
-                crate::parser::Connector::Semi => s.push_str(" ; "),
-                crate::parser::Connector::Amp => s.push_str(" & "),
+    entries
+        .iter()
+        .map(|e| {
+            let mut s = crate::engine::job_control::format_command(&e.pipeline);
+            if let Some(conn) = e.connector {
+                match conn {
+                    crate::parser::Connector::And => s.push_str(" && "),
+                    crate::parser::Connector::Or => s.push_str(" || "),
+                    crate::parser::Connector::Semi => s.push_str(" ; "),
+                    crate::parser::Connector::Amp => s.push_str(" & "),
+                }
             }
-        }
-        s
-    }).collect::<Vec<_>>().join(" ")
+            s
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn set_current_job(state: &mut ShellState, job_id: usize) {
@@ -368,9 +414,13 @@ pub fn set_current_job(state: &mut ShellState, job_id: usize) {
 
 pub fn resolve_job_specifier(arg: &str, state: &ShellState) -> Result<usize, String> {
     if arg == "%+" || arg == "%%" {
-        return state.current_job.ok_or_else(|| "current: no such job".to_string());
+        return state
+            .current_job
+            .ok_or_else(|| "current: no such job".to_string());
     } else if arg == "%-" {
-        return state.previous_job.ok_or_else(|| "previous: no such job".to_string());
+        return state
+            .previous_job
+            .ok_or_else(|| "previous: no such job".to_string());
     } else if let Some(id_str) = arg.strip_prefix('%') {
         if let Ok(id) = id_str.parse::<usize>() {
             return Ok(id);

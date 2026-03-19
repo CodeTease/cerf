@@ -12,7 +12,10 @@ pub struct Arg {
 
 impl Arg {
     pub fn new(value: impl Into<String>, quoted: bool) -> Self {
-        Self { value: value.into(), quoted }
+        Self {
+            value: value.into(),
+            quoted,
+        }
     }
 
     pub fn plain(value: impl Into<String>) -> Self {
@@ -71,7 +74,7 @@ impl CommandNode {
             _ => None,
         }
     }
-    
+
     pub fn name_mut(&mut self) -> Option<&mut String> {
         match self {
             Self::Simple(s) => s.name.as_mut(),

@@ -1,5 +1,5 @@
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
+use crate::engine::state::{ExecutionResult, ShellState};
 
 pub const COMMAND_INFO_TETHER: CommandInfo = CommandInfo {
     name: "job.tether",
@@ -35,7 +35,7 @@ pub fn run_untether(args: &[String], state: &mut ShellState) -> i32 {
 
 fn set_tether(args: &[String], state: &mut ShellState, tether: bool) -> i32 {
     let mut code = 0;
-    
+
     if args.is_empty() {
         if tether {
             eprintln!("cerf: tether: usage: tether jobspec ...");
@@ -87,6 +87,6 @@ fn set_tether(args: &[String], state: &mut ShellState, tether: bool) -> i32 {
             }
         }
     }
-    
+
     code
 }

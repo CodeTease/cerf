@@ -1,8 +1,8 @@
-use std::fs;
-use chrono::{DateTime, Local};
-use crate::engine::state::{ExecutionResult, ShellState};
 use crate::builtins::registry::CommandInfo;
 use crate::engine::path::expand_home;
+use crate::engine::state::{ExecutionResult, ShellState};
+use chrono::{DateTime, Local};
+use std::fs;
 
 pub const COMMAND_INFO: CommandInfo = CommandInfo {
     name: "fs.stat",
@@ -74,7 +74,7 @@ pub fn runner(args: &[String], _state: &mut ShellState) -> (ExecutionResult, i32
                     println!("Device: unknown         Inode: unknown         Links: unknown");
                     println!("Access: unknown         Uid: unknown           Gid: unknown");
                 }
-                
+
                 if let Ok(atime) = meta.accessed() {
                     let dt: DateTime<Local> = atime.into();
                     println!("Access: {}", dt.format("%Y-%m-%d %H:%M:%S.%f %z"));
