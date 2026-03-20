@@ -17,7 +17,7 @@ sudo apt install cerf
 ### RHEL, CentOS & Fedora (RPM)
 To configure the YUM/DNF repository and install the package:
 ```bash
-curl -1sLf 'https://dl.cloudsmith.io/public/codetease/tools/setup.rpm.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/codetease/tools/setup.rpm.sh' | sudo -E distro=el codename=9 bash
 sudo dnf install cerf
 ```
 
