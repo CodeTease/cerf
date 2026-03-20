@@ -10,7 +10,7 @@ To easily install `cerf` and receive future updates naturally through your syste
 ### Debian & Ubuntu (APT)
 To configure the APT repository and install the package:
 ```bash
-curl -1sLf 'https://dl.cloudsmith.io/public/codetease/tools/setup.deb.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/codetease/tools/setup.deb.sh' | sudo -E distro=ubuntu codename=noble bash
 sudo apt install cerf
 ```
 
