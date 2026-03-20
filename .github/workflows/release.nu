@@ -697,6 +697,23 @@ def run_publish [] {
         let scoop_bucket = (try { $config.scoop.bucket } catch { "" })
         let scoop_bucket_name = if ($scoop_bucket | is-empty) { "" } else { $scoop_bucket | split row "/" | last }
 
+        let cloudsmith_targets = (try { $config.cloudsmith.targets } catch { {} })
+        
+        let deb_target = (try { $cloudsmith_targets.deb } catch { "ubuntu/any-version" })
+        let deb_parts = ($deb_target | split row "/")
+        let apt_distro = (try { $deb_parts | first } catch { "ubuntu" })
+        let apt_codename = (try { $deb_parts | last } catch { "any-version" })
+
+        let rpm_target = (try { $cloudsmith_targets.rpm } catch { "el/any-version" })
+        let rpm_parts = ($rpm_target | split row "/")
+        let rpm_distro = (try { $rpm_parts | first } catch { "el" })
+        let rpm_codename = (try { $rpm_parts | last } catch { "any-version" })
+
+        let apk_target = (try { $cloudsmith_targets.apk } catch { "alpine/any-version" })
+        let apk_parts = ($apk_target | split row "/")
+        let apk_distro = (try { $apk_parts | first } catch { "alpine" })
+        let apk_codename = (try { $apk_parts | last } catch { "any-version" })
+
         let context = {
             "cloudsmith.enable": $cloudsmith_enabled,
             "docker.enable": $has_docker,
@@ -722,7 +739,13 @@ def run_publish [] {
             | str replace --all "{{github_org}}" $github_org
             | str replace --all "{{brew_tap}}" $brew_tap
             | str replace --all "{{scoop_bucket}}" $scoop_bucket
-            | str replace --all "{{scoop_bucket_name}}" $scoop_bucket_name)
+            | str replace --all "{{scoop_bucket_name}}" $scoop_bucket_name
+            | str replace --all "{{apt_distro}}" $apt_distro
+            | str replace --all "{{apt_codename}}" $apt_codename
+            | str replace --all "{{rpm_distro}}" $rpm_distro
+            | str replace --all "{{rpm_codename}}" $rpm_codename
+            | str replace --all "{{apk_distro}}" $apk_distro
+            | str replace --all "{{apk_codename}}" $apk_codename)
         
         $r_content | save --force $"($dist)/($docs_file)"
         print $"Generated ($dist)/($docs_file)"
@@ -736,10 +759,11 @@ def run_publish [] {
             
             print "Checking for changes in registry docs..."
             cd $env.GITHUB_WORKSPACE
-            let actor = ($env.GITHUB_ACTOR? | default "github-actions[bot]")
+            let actor = "github-actions[bot]"
+            let email = "41898282+github-actions[bot]@users.noreply.github.com"
             try {
                 git config --local user.name $actor
-                git config --local user.email $"($actor)@users.noreply.github.com"
+                git config --local user.email $email
                 git add $docs_path
                 let status = (git status --porcelain $docs_path)
                 if ($status | is-not-empty) {

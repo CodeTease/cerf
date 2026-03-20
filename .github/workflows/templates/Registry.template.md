@@ -11,21 +11,21 @@ To easily install `{{bin}}` and receive future updates naturally through your sy
 ### Debian & Ubuntu (APT)
 To configure the APT repository and install the package:
 ```bash
-curl -1sLf 'https://dl.cloudsmith.io/public/{{repo_path}}/setup.deb.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/{{repo_path}}/setup.deb.sh' | sudo -E distro={{apt_distro}} codename={{apt_codename}} bash
 sudo apt install {{bin}}
 ```
 
 ### RHEL, CentOS & Fedora (RPM)
 To configure the YUM/DNF repository and install the package:
 ```bash
-curl -1sLf 'https://dl.cloudsmith.io/public/{{repo_path}}/setup.rpm.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/{{repo_path}}/setup.rpm.sh' | sudo -E distro={{rpm_distro}} codename={{rpm_codename}} bash
 sudo dnf install {{bin}}
 ```
 
 ### Alpine Linux (APK)
 To configure the APK repository and install the package:
 ```bash
-curl -1sLf 'https://dl.cloudsmith.io/public/{{repo_path}}/setup.alpine.sh' | sudo -E bash
+curl -1sLf 'https://dl.cloudsmith.io/public/{{repo_path}}/setup.alpine.sh' | sudo -E distro={{apk_distro}} codename={{apk_codename}} bash
 apk add {{bin}}
 ```
 [/IF]
