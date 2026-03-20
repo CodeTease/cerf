@@ -51,8 +51,12 @@ pub fn exit() {
 }
 
 pub fn clear() {
+    #[cfg(windows)]
+    let _ = std::process::Command::new("cmd").args(["/c", "cls"]).status(); // Hacky
+    #[cfg(not(windows))]
+    use std::io;
     use std::io::{self, Write};
-    print!("\x1B[2J\x1B[1;1H");
+    print!("\x1B[3J\x1B[2J\x1B[1;1H");
     let _ = io::stdout().flush();
 }
 
