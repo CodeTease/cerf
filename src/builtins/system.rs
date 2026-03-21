@@ -51,14 +51,9 @@ pub fn exit() {
 }
 
 pub fn clear() {
-    #[cfg(windows)]
-    let _ = std::process::Command::new("cmd").args(["/c", "cls"]).status();
-    #[cfg(not(windows))]
-    {
-        use std::io::Write;
-        print!("\x1B[3J\x1B[2J\x1B[1;1H");
-        let _ = std::io::stdout().flush();
-    }
+    use std::io::Write;
+    print!("\x1B[2J\x1B[3J\x1B[H");
+    let _ = std::io::stdout().flush();
 }
 
 /// Run the `exec` built-in.
