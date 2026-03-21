@@ -120,9 +120,13 @@ def run_build [] {
 
         match $target {
             'aarch64-unknown-linux-gnu' => {
-                sudo apt-get install gcc-aarch64-linux-gnu -y
-                $env.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = 'aarch64-linux-gnu-gcc'
-                do $cargo_build_project
+                if ($os | str ends-with "-arm") {
+                    do $cargo_build_project
+                } else {
+                    sudo apt-get install gcc-aarch64-linux-gnu -y
+                    $env.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = 'aarch64-linux-gnu-gcc'
+                    do $cargo_build_project
+                }
             }
 
             'riscv64gc-unknown-linux-gnu' => {
@@ -144,11 +148,16 @@ def run_build [] {
             }
 
             'aarch64-unknown-linux-musl' => {
-                aria2c https://github.com/nushell/integrations/releases/download/build-tools/aarch64-linux-musl-cross.tgz
-                tar -xf aarch64-linux-musl-cross.tgz -C $env.HOME
-                $env.PATH = ($env.PATH | split row (char esep) | prepend $"($env.HOME)/aarch64-linux-musl-cross/bin")
-                $env.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER = 'aarch64-linux-musl-gcc'
-                do $cargo_build_project
+                if ($os | str ends-with "-arm") {
+                    sudo apt-get install musl-tools -y
+                    do $cargo_build_project
+                } else {
+                    aria2c https://github.com/nushell/integrations/releases/download/build-tools/aarch64-linux-musl-cross.tgz
+                    tar -xf aarch64-linux-musl-cross.tgz -C $env.HOME
+                    $env.PATH = ($env.PATH | split row (char esep) | prepend $"($env.HOME)/aarch64-linux-musl-cross/bin")
+                    $env.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER = 'aarch64-linux-musl-gcc'
+                    do $cargo_build_project
+                }
             }
 
             'loongarch64-unknown-linux-gnu' => {
@@ -930,7 +939,7 @@ def run_publish [] {
 
     # 1. GitHub Release
     if $is_tag {
-        print $"(char nl)[GitHub] Creating Release Draft & Uploading Assets..."
+        print $"(char nl)[GitHub] Creating Release & Uploading Assets..."
         hr-line
 
         
@@ -1048,10 +1057,10 @@ def run_publish [] {
 
         # Check if release exists
         let release_exists = (try { gh release view $tag_name | complete } catch { {exit_code: 1} })
-        let prerelease_flag = if $is_prerelease { ["--prerelease"] } else { [] }
+        let prerelease_flag = if $is_prerelease { ["--prerelease"] } else { ["--latest"] }
 
         if $release_exists.exit_code != 0 {
-            gh release create $tag_name --draft --title $"($tag_name)" --notes-file $notes_file ...$prerelease_flag
+            gh release create $tag_name --title $"($tag_name)" --notes-file $notes_file ...$prerelease_flag
         } else {
             gh release edit $tag_name --notes-file $notes_file ...$prerelease_flag
         }

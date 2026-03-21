@@ -3,7 +3,7 @@
 #   1. https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstrategymatrixinclude
 #
 # Optimized for general-purpose
-name: Create Release Draft
+name: Release
 
 on:
   workflow_dispatch:
@@ -45,7 +45,7 @@ jobs:
         run: nu .github/workflows/release-plan.nu
 
   release:
-    name: CLI Dummy
+    name: Build
     needs: plan
 
     strategy:
@@ -155,8 +155,6 @@ jobs:
           sudo apt update
           sudo apt install nfpm -y
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -204,7 +202,6 @@ jobs:
     - name: Publish Checksums
       uses: softprops/action-gh-release@v2.0.5
       with:
-        draft: true
         files: SHA256SUMS
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
