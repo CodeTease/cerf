@@ -1,6 +1,7 @@
 mod builtins;
 mod engine;
 mod parser;
+mod prompt;
 mod signals;
 
 use engine::ShellState;
@@ -12,28 +13,6 @@ use std::sync::atomic::AtomicUsize;
 
 pub static FG_JOB: AtomicUsize = AtomicUsize::new(0);
 
-fn get_prompt() -> String {
-    let cwd = env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let home = dirs::home_dir();
-
-    let path_str = if let Some(home) = home {
-        if cwd.starts_with(&home) {
-            let relative = cwd.strip_prefix(&home).unwrap();
-            if relative.as_os_str().is_empty() {
-                "~".to_string()
-            } else {
-                let sep = std::path::MAIN_SEPARATOR;
-                format!("~{}{}", sep, relative.display())
-            }
-        } else {
-            cwd.display().to_string()
-        }
-    } else {
-        cwd.display().to_string()
-    };
-
-    format!("cf {} > ", path_str)
-}
 
 fn main() -> rustyline::Result<()> {
     signals::init();
@@ -141,7 +120,7 @@ fn main() -> rustyline::Result<()> {
         engine::job_control::restore_terminal(&state);
 
         let prompt = if input_buffer.is_empty() {
-            get_prompt()
+            prompt::build_prompt(&mut state)
         } else {
             state
                 .get_var_string("PS2")
