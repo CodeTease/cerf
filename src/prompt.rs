@@ -6,6 +6,34 @@ use std::fs;
 use std::path::PathBuf;
 use std::process;
 
+pub fn wrap_ansi_escapes(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\x1B' && i + 1 < chars.len() && chars[i + 1] == '[' {
+            // Start of CSI sequence
+            out.push('\x01');
+            out.push('\x1B');
+            out.push('[');
+            i += 2;
+            while i < chars.len() {
+                let c = chars[i];
+                out.push(c);
+                i += 1;
+                if c >= '\x40' && c <= '\x7E' {
+                    break;
+                }
+            }
+            out.push('\x02');
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
 pub fn build_prompt(state: &mut ShellState) -> String {
     let ps1 = state
         .get_var_string("PS1")
@@ -70,7 +98,8 @@ pub fn build_prompt(state: &mut ShellState) -> String {
                 }
                 
                 if let Ok(output) = fs::read_to_string(&temp_file) {
-                    result.push_str(output.trim_end_matches('\n'));
+                    let cleaned = wrap_ansi_escapes(output.trim_end_matches('\n'));
+                    result.push_str(&cleaned);
                     let _ = fs::remove_file(&temp_file);
                 }
                 
@@ -124,6 +153,8 @@ pub fn build_prompt(state: &mut ShellState) -> String {
                 'n' => result.push('\n'),
                 'r' => result.push('\r'),
                 'e' => result.push('\x1B'),
+                '[' => result.push('\x01'),
+                ']' => result.push('\x02'),
                 '\\' => result.push('\\'),
                 '$' => {
                     let uid = env::var("UID").unwrap_or_default();
